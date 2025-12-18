@@ -36,7 +36,7 @@ services:
 
   worker:
     build: .
-    command: faststream run src.worker:app
+    command: faststream run src.worker:app --reload
     volumes:
       - .:/app
     restart: always

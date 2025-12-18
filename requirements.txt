@@ -8,3 +8,4 @@ pydantic
 pydantic-settings
 sqladmin
 faststream[redis, cli]
+httpx
