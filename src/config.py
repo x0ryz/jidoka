@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_PORT: int = 5432
 
+    REDIS_URL: str
+
+    META_URL: str
+    META_PHONE_ID: str
+    META_TOKEN: str
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @computed_field
