@@ -29,7 +29,7 @@ async def verify_webhook(request: Request):
     hub_verify_token = request.query_params.get("hub.verify_token")
 
     if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
-        return int(hub_challenge)
+        return int(hub_challenge or 0)
 
     raise HTTPException(status_code=403, detail="Invalid token")
 
@@ -55,16 +55,21 @@ async def receive_webhook(request: Request):
     return {"status": "ok"}
 
 @app.post("/send_message/{phone}")
-async def send_message(phone: str):
+async def send_message(phone: str, type: str = "text", text: str = "Це тестове повідомлення з API"):
     request_id = str(uuid.uuid4())
-    broker = RedisBroker("redis://redis:6379")
-    await broker.connect()
 
-    logger.info(f"New API request received", request_id=request_id)
+    async with RedisBroker(settings.REDIS_URL) as broker:
 
-    await broker.publish(
-        {"phone": phone, "request_id": request_id},
-        channel="whatsapp_messages"
-    )
+        logger.info(f"New API request received", request_id=request_id)
 
-    await broker.stop()
+        await broker.publish(
+            {
+                "phone": phone,
+                "type": type,
+                "body": text,
+                "request_id": request_id
+            },
+            channel="whatsapp_messages"
+        )
+
+        return {"status": "sent", "request_id": request_id}
