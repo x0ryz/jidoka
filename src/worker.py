@@ -9,7 +9,7 @@ from src.schemas import WhatsAppMessage, WabaSyncRequest
 from src.database import async_session_maker
 from src.logger import setup_logging
 from src.config import settings
-from src.models import WabaAccount
+from src.models import WabaAccount, WabaPhoneNumber, get_utc_now
 
 logger = setup_logging()
 
@@ -75,6 +75,15 @@ async def fetch_waba_account_info(waba_id: str, client: httpx.AsyncClient):
     return resp.json()
 
 
+async def fetch_waba_phone_numbers(waba_id: str, client: httpx.AsyncClient):
+    """Fetch WABA phone numbers from Meta Graph API."""
+    url = f"{settings.META_URL}/{waba_id}/phone_numbers"
+
+    resp = await client.get(url)
+    resp.raise_for_status()
+    return resp.json()
+
+
 @broker.subscriber("whatsapp_messages")
 async def handle_messages(message: WhatsAppMessage, client: httpx.AsyncClient = Context("http_client")):
     with logger.contextualize(request_id=message.request_id):
@@ -103,7 +112,7 @@ async def handle_account_sync(message: WabaSyncRequest, client: httpx.AsyncClien
             if not waba_account:
                 logger.warning("No WABA accounts found in the database.")
                 return
-            
+
             current_waba_id = waba_account.waba_id
             logger.info(f"Syncing WABA account ID: {current_waba_id}")
 
@@ -111,12 +120,47 @@ async def handle_account_sync(message: WabaSyncRequest, client: httpx.AsyncClien
             account_info = await fetch_waba_account_info(current_waba_id, client)
 
             waba_account.name = account_info.get("name")
-            waba_account.account_review_status = account_info.get("account_review_status")
-            waba_account.business_verification_status = account_info.get("business_verification_status")
+            waba_account.account_review_status = account_info.get(
+                "account_review_status")
+            waba_account.business_verification_status = account_info.get(
+                "business_verification_status")
 
             session.add(waba_account)
             await session.commit()
             await session.refresh(waba_account)
-            logger.success(f"Synced account '{waba_account.name}' successfully.")
+
+            phones_data = await fetch_waba_phone_numbers(current_waba_id, client)
+
+            for item in phones_data.get('data', []):
+                p_id = item.get('id')
+
+                stmt_phone = select(WabaPhoneNumber).where(
+                    WabaPhoneNumber.phone_number_id == p_id)
+                res_phone = await session.exec(stmt_phone)
+                phone_obj = res_phone.first()
+
+                if not phone_obj:
+                    phone_obj = WabaPhoneNumber(
+                        waba_id=waba_account.id,
+                        phone_number_id=p_id,
+                        display_phone_number=item.get(
+                            'display_phone_number'),
+                        status=item.get('code_verification_status'),
+                        quality_rating=item.get('quality_rating'),
+                        messaging_limit_tier=item.get(
+                            'messaging_limit_tier')
+                    )
+                else:
+                    phone_obj.status = item.get('code_verification_status')
+                    phone_obj.quality_rating = item.get('quality_rating')
+                    phone_obj.messaging_limit_tier = item.get(
+                        'messaging_limit_tier')
+                    phone_obj.updated_at = get_utc_now()
+
+                session.add(phone_obj)
+
+            await session.commit()
+            logger.success(
+                f"Synced account '{waba_account.name}' and its phones.")
         except Exception as e:
             logger.exception(f"Failed to sync WABA ID {current_waba_id}")
