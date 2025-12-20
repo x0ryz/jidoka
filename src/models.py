@@ -9,6 +9,20 @@ def get_utc_now():
     return datetime.now(timezone.utc)
 
 
+class MessageDirection(str, Enum):
+    INBOUND = "inbound"
+    OUTBOUND = "outbound"
+
+
+class MessageStatus(str, Enum):
+    PENDING = "pending"
+    SENT = "sent"
+    DELIVERED = "delivered"
+    READ = "read"
+    FAILED = "failed"
+    RECEIVED = "received"
+
+
 class WabaAccount(SQLModel, table=True):
     """Business account (phone number connected to WABA)"""
 
@@ -46,8 +60,55 @@ class WabaPhoneNumber(SQLModel, table=True):
         default_factory=get_utc_now,
         sa_column=Column(DateTime(timezone=True))
     )
+    created_at: datetime = Field(
+        default_factory=get_utc_now,
+        sa_column=Column(DateTime(timezone=True))
+    )
+    messages: list["Message"] = Relationship(back_populates="waba_phone")
+
+
+class Contact(SQLModel, table=True):
+    """Contacts stored in the system"""
+
+    __tablename__ = "contacts"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    phone_number: str = Field(unique=True, index=True)
+    name: Optional[str] = None
+    created_at: datetime = Field(
+        default_factory=get_utc_now,
+        sa_column=Column(DateTime(timezone=True))
+    )
+    updated_at: datetime = Field(
+        default_factory=get_utc_now,
+        sa_column=Column(DateTime(timezone=True))
+    )
+
+    messages: list["Message"] = Relationship(back_populates="contact")
+
+class Message(SQLModel, table=True):
+    """Messages sent and received via WhatsApp"""
+
+    __tablename__ = "messages"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+
+    waba_phone_id: UUID = Field(foreign_key="waba_phone_numbers.id")
+    contact_id: UUID = Field(foreign_key="contacts.id")
+
+    direction: MessageDirection
+    status: MessageStatus = Field(default=MessageStatus.PENDING)
+
+    body: str
 
     created_at: datetime = Field(
         default_factory=get_utc_now,
         sa_column=Column(DateTime(timezone=True))
     )
+    updated_at: datetime = Field(
+        default_factory=get_utc_now,
+        sa_column=Column(DateTime(timezone=True))
+    )
+
+    contact: Optional[Contact] = Relationship(back_populates="messages")
+    waba_phone: Optional[WabaPhoneNumber] = Relationship(back_populates="messages")

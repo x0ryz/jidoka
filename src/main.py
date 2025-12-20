@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends, Query
 from sqladmin import Admin
 from faststream.redis import RedisBroker
 
@@ -27,10 +27,11 @@ async def read_root():
 
 
 @app.get("/webhook")
-async def verify_webhook(request: Request):
-    hub_mode = request.query_params.get("hub.mode")
-    hub_challenge = request.query_params.get("hub.challenge")
-    hub_verify_token = request.query_params.get("hub.verify_token")
+async def verify_webhook(
+    hub_mode: str = Query(alias="hub.mode"),
+    hub_verify_token: str = Query(alias="hub.verify_token"),
+    hub_challenge: str = Query(alias="hub.challenge")
+):
 
     if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
         return int(hub_challenge or 0)
