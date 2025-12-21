@@ -1,8 +1,10 @@
-from sqlmodel import SQLModel, Field, Relationship, Column, DateTime
-from typing import Optional
-from enum import Enum
-from uuid import UUID, uuid4
 from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Dict, Optional
+from uuid import UUID, uuid4
+
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
 
 
 def get_utc_now():
@@ -34,8 +36,7 @@ class WabaAccount(SQLModel, table=True):
     account_review_status: Optional[str] = None
     business_verification_status: Optional[str] = None
 
-    phone_numbers: list["WabaPhoneNumber"] = Relationship(
-        back_populates="waba")
+    phone_numbers: list["WabaPhoneNumber"] = Relationship(back_populates="waba")
 
 
 class WabaPhoneNumber(SQLModel, table=True):
@@ -57,12 +58,10 @@ class WabaPhoneNumber(SQLModel, table=True):
     messaging_limit_tier: Optional[str] = None
 
     updated_at: datetime = Field(
-        default_factory=get_utc_now,
-        sa_column=Column(DateTime(timezone=True))
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
     created_at: datetime = Field(
-        default_factory=get_utc_now,
-        sa_column=Column(DateTime(timezone=True))
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
     messages: list["Message"] = Relationship(back_populates="waba_phone")
 
@@ -76,15 +75,14 @@ class Contact(SQLModel, table=True):
     phone_number: str = Field(unique=True, index=True)
     name: Optional[str] = None
     created_at: datetime = Field(
-        default_factory=get_utc_now,
-        sa_column=Column(DateTime(timezone=True))
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
     updated_at: datetime = Field(
-        default_factory=get_utc_now,
-        sa_column=Column(DateTime(timezone=True))
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
 
     messages: list["Message"] = Relationship(back_populates="contact")
+
 
 class Message(SQLModel, table=True):
     """Messages sent and received via WhatsApp"""
@@ -102,13 +100,23 @@ class Message(SQLModel, table=True):
     body: str
 
     created_at: datetime = Field(
-        default_factory=get_utc_now,
-        sa_column=Column(DateTime(timezone=True))
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
     updated_at: datetime = Field(
-        default_factory=get_utc_now,
-        sa_column=Column(DateTime(timezone=True))
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
 
     contact: Optional[Contact] = Relationship(back_populates="messages")
     waba_phone: Optional[WabaPhoneNumber] = Relationship(back_populates="messages")
+
+
+class WebhookLog(SQLModel, table=True):
+    """Log for all incoming webhooks processed via Redis"""
+
+    __tablename__ = "webhook_logs"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    payload: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    processed_at: datetime = Field(
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    )

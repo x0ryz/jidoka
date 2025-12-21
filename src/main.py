@@ -1,18 +1,18 @@
 import uuid
 
-from fastapi import FastAPI, Request, HTTPException, Depends, Query
-from sqladmin import Admin
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from faststream.redis import RedisBroker
-
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqladmin import Admin
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.config import settings
 from src.database import engine, get_session
-from src.models import WabaAccount
+
 # from src.admin import WabaAccountAdmin
 from src.logger import setup_logging
-from src.config import settings
-
+from src.models import WabaAccount
+from src.schemas import WebhookEvent
 
 logger = setup_logging()
 app = FastAPI()
@@ -30,9 +30,8 @@ async def read_root():
 async def verify_webhook(
     hub_mode: str = Query(alias="hub.mode"),
     hub_verify_token: str = Query(alias="hub.verify_token"),
-    hub_challenge: str = Query(alias="hub.challenge")
+    hub_challenge: str = Query(alias="hub.challenge"),
 ):
-
     if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
         return int(hub_challenge or 0)
 
@@ -41,42 +40,29 @@ async def verify_webhook(
 
 @app.post("/webhook")
 async def receive_webhook(request: Request):
-    data = await request.json()
-
     try:
-        entry = data["entry"][0]
-        changes = entry["changes"][0]
-        value = changes["value"]
+        data = await request.json()
+    except Exception:
+        return {"status": "ignored"}
 
-        if "messages" in value:
-            message_data = value["messages"][0]
-            phone = message_data["from"]
-            text = message_data["text"]["body"]
-
-            print(f"Від: {phone}")
-            print(f"Текст: {text}")
-    except Exception as e:
-        pass
+    async with RedisBroker(settings.REDIS_URL) as broker:
+        await broker.publish(WebhookEvent(payload=data), channel="raw_webhooks")
 
     return {"status": "ok"}
 
 
 @app.post("/send_message/{phone}")
-async def send_message(phone: str, type: str = "text", text: str = "Це тестове повідомлення з API"):
+async def send_message(
+    phone: str, type: str = "text", text: str = "Це тестове повідомлення з API"
+):
     request_id = str(uuid.uuid4())
 
     async with RedisBroker(settings.REDIS_URL) as broker:
-
-        logger.info(f"New API request received", request_id=request_id)
+        logger.info("New API request received", request_id=request_id)
 
         await broker.publish(
-            {
-                "phone": phone,
-                "type": type,
-                "body": text,
-                "request_id": request_id
-            },
-            channel="whatsapp_messages"
+            {"phone": phone, "type": type, "body": text, "request_id": request_id},
+            channel="whatsapp_messages",
         )
 
         return {"status": "sent", "request_id": request_id}
@@ -88,9 +74,6 @@ async def trigger_waba_sync():
     request_id = str(uuid.uuid4())
 
     async with RedisBroker(settings.REDIS_URL) as broker:
-        await broker.publish(
-            {"request_id": request_id},
-            channel="sync_account_data"
-        )
+        await broker.publish({"request_id": request_id}, channel="sync_account_data")
 
     return {"status": "sync_started", "request_id": request_id}

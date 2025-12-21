@@ -1,6 +1,7 @@
 import uuid
+from typing import Any, Dict, Literal
+
 from pydantic import BaseModel
-from typing import Literal
 
 
 class WhatsAppMessage(BaseModel):
@@ -12,3 +13,7 @@ class WhatsAppMessage(BaseModel):
 
 class WabaSyncRequest(BaseModel):
     request_id: str = str(uuid.uuid4())
+
+
+class WebhookEvent(BaseModel):
+    payload: Dict[str, Any]

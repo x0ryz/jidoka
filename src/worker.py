@@ -1,15 +1,15 @@
-import httpx
 import asyncio
 
-from faststream import FastStream, Context, ContextRepo
+import httpx
+from faststream import Context, ContextRepo, FastStream
 from faststream.redis import RedisBroker
 from sqlmodel import select
 
-from src.schemas import WhatsAppMessage, WabaSyncRequest
+from src.config import settings
 from src.database import async_session_maker
 from src.logger import setup_logging
-from src.config import settings
-from src.models import WabaAccount, WabaPhoneNumber, get_utc_now
+from src.models import WabaAccount, WabaPhoneNumber, WebhookLog, get_utc_now
+from src.schemas import WabaSyncRequest, WebhookEvent, WhatsAppMessage
 
 logger = setup_logging()
 
@@ -23,8 +23,8 @@ async def setup_http_client(context: ContextRepo):
         timeout=10.0,
         headers={
             "Authorization": f"Bearer {settings.META_TOKEN}",
-            "Content-Type": "application/json"
-        }
+            "Content-Type": "application/json",
+        },
     )
 
     context.set_global("http_client", client)
@@ -47,17 +47,14 @@ async def send_whatsapp_message(payload: WhatsAppMessage, client: httpx.AsyncCli
             "messaging_product": "whatsapp",
             "to": payload.phone,
             "type": "text",
-            "text": {"body": payload.body}
+            "text": {"body": payload.body},
         }
     else:
         data = {
             "messaging_product": "whatsapp",
             "to": payload.phone,
             "type": "template",
-            "template": {
-                "name": payload.body,
-                "language": {"code": "en_US"}
-            }
+            "template": {"name": payload.body, "language": {"code": "en_US"}},
         }
 
     resp = await client.post(url, json=data)
@@ -85,25 +82,28 @@ async def fetch_waba_phone_numbers(waba_id: str, client: httpx.AsyncClient):
 
 
 @broker.subscriber("whatsapp_messages")
-async def handle_messages(message: WhatsAppMessage, client: httpx.AsyncClient = Context("http_client")):
+async def handle_messages(
+    message: WhatsAppMessage, client: httpx.AsyncClient = Context("http_client")
+):
     with logger.contextualize(request_id=message.request_id):
         logger.info(f"Received message request for phone: {message.phone}")
 
         try:
             result = await send_whatsapp_message(message, client)
-            logger.success(
-                f"Message sent successfully. Meta Response: {result}")
+            logger.success(f"Message sent successfully. Meta Response: {result}")
             await asyncio.sleep(1)
         except Exception as e:
             logger.exception(f"Failed to send message to {message.phone}")
 
 
 @broker.subscriber("sync_account_data")
-async def handle_account_sync(message: WabaSyncRequest, client: httpx.AsyncClient = Context("http_client")):
+async def handle_account_sync(
+    message: WabaSyncRequest, client: httpx.AsyncClient = Context("http_client")
+):
     request_id = message.request_id
 
     with logger.contextualize(request_id=request_id):
-        logger.info(f"Starting sync from database...")
+        logger.info("Starting sync from database...")
 
         async with async_session_maker() as session:
             result = await session.exec(select(WabaAccount))
@@ -121,9 +121,11 @@ async def handle_account_sync(message: WabaSyncRequest, client: httpx.AsyncClien
 
             waba_account.name = account_info.get("name")
             waba_account.account_review_status = account_info.get(
-                "account_review_status")
+                "account_review_status"
+            )
             waba_account.business_verification_status = account_info.get(
-                "business_verification_status")
+                "business_verification_status"
+            )
 
             session.add(waba_account)
             await session.commit()
@@ -131,11 +133,12 @@ async def handle_account_sync(message: WabaSyncRequest, client: httpx.AsyncClien
 
             phones_data = await fetch_waba_phone_numbers(current_waba_id, client)
 
-            for item in phones_data.get('data', []):
-                p_id = item.get('id')
+            for item in phones_data.get("data", []):
+                p_id = item.get("id")
 
                 stmt_phone = select(WabaPhoneNumber).where(
-                    WabaPhoneNumber.phone_number_id == p_id)
+                    WabaPhoneNumber.phone_number_id == p_id
+                )
                 res_phone = await session.exec(stmt_phone)
                 phone_obj = res_phone.first()
 
@@ -143,24 +146,34 @@ async def handle_account_sync(message: WabaSyncRequest, client: httpx.AsyncClien
                     phone_obj = WabaPhoneNumber(
                         waba_id=waba_account.id,
                         phone_number_id=p_id,
-                        display_phone_number=item.get(
-                            'display_phone_number'),
-                        status=item.get('code_verification_status'),
-                        quality_rating=item.get('quality_rating'),
-                        messaging_limit_tier=item.get(
-                            'messaging_limit_tier')
+                        display_phone_number=item.get("display_phone_number"),
+                        status=item.get("code_verification_status"),
+                        quality_rating=item.get("quality_rating"),
+                        messaging_limit_tier=item.get("messaging_limit_tier"),
                     )
                 else:
-                    phone_obj.status = item.get('code_verification_status')
-                    phone_obj.quality_rating = item.get('quality_rating')
-                    phone_obj.messaging_limit_tier = item.get(
-                        'messaging_limit_tier')
+                    phone_obj.status = item.get("code_verification_status")
+                    phone_obj.quality_rating = item.get("quality_rating")
+                    phone_obj.messaging_limit_tier = item.get("messaging_limit_tier")
                     phone_obj.updated_at = get_utc_now()
 
                 session.add(phone_obj)
 
             await session.commit()
-            logger.success(
-                f"Synced account '{waba_account.name}' and its phones.")
+            logger.success(f"Synced account '{waba_account.name}' and its phones.")
         except Exception as e:
             logger.exception(f"Failed to sync WABA ID {current_waba_id}")
+
+
+@broker.subscriber("raw_webhooks")
+async def handle_raw_webhook(event: WebhookEvent):
+    data = event.payload
+
+    try:
+        async with async_session_maker() as session:
+            log_entry = WebhookLog(payload=data)
+            session.add(log_entry)
+            await session.commit()
+            logger.info("Webhook saved to database")
+    except Exception as e:
+        logger.error(f"Database error saving webhook: {e}")
