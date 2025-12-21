@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 
 class WhatsAppMessage(BaseModel):
-    phone: str
+    phone_number: str
     type: Literal["text", "template"]
     body: str
     request_id: str = str(uuid.uuid4())

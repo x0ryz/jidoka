@@ -1,17 +1,14 @@
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from faststream.redis import RedisBroker
 from sqladmin import Admin
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.config import settings
-from src.database import engine, get_session
+from src.core.config import settings
+from src.core.database import engine
 
 # from src.admin import WabaAccountAdmin
-from src.logger import setup_logging
-from src.models import WabaAccount
+from src.core.logger import setup_logging
 from src.schemas import WebhookEvent
 
 logger = setup_logging()
@@ -61,7 +58,12 @@ async def send_message(
         logger.info("New API request received", request_id=request_id)
 
         await broker.publish(
-            {"phone": phone, "type": type, "body": text, "request_id": request_id},
+            {
+                "phone_number": phone,
+                "type": type,
+                "body": text,
+                "request_id": request_id,
+            },
             channel="whatsapp_messages",
         )
 

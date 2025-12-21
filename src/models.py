@@ -98,7 +98,11 @@ class Message(SQLModel, table=True):
     direction: MessageDirection
     status: MessageStatus = Field(default=MessageStatus.PENDING)
 
+    message_type: str = Field(default="text")
     body: str
+
+    media_id: Optional[str] = Field(default=None)
+    caption: Optional[str] = Field(default=None)
 
     created_at: datetime = Field(
         default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
