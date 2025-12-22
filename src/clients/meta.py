@@ -44,3 +44,10 @@ class MetaClient:
         resp = await self.client.get(media_url)
         resp.raise_for_status()
         return resp.content
+
+    async def fetch_templates(self, waba_id: str):
+        """Fetch message template for a WABA account."""
+        url = f"{self.base_url}/{waba_id}/message_templates"
+        resp = await self.client.get(url)
+        resp.raise_for_status()
+        return resp.json()

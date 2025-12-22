@@ -13,6 +13,7 @@ from src.models import (
     Message,
     MessageDirection,
     MessageStatus,
+    Template,
     WabaPhoneNumber,
 )
 from src.schemas import WhatsAppMessage
@@ -44,12 +45,26 @@ class WhatsAppService:
             logger.error("No WABA Phone numbers found in DB.")
             return
 
+        template_db_id = None
+
+        if message.type == "template":
+            stmt_tmpl = select(Template).where(
+                Template.name == message.body,
+                Template.waba_id == waba_phone.waba_id,
+                Template.status == "APPROVED",
+            )
+            template_obj = (await self.session.exec(stmt_tmpl)).first()
+            if template_obj:
+                template_db_id = template_obj.id
+
         db_message = Message(
             waba_phone_id=waba_phone.id,
             contact_id=contact.id,
             direction=MessageDirection.OUTBOUND,
             status=MessageStatus.PENDING,
+            message_type=message.type,
             body=message.body,
+            template_id=template_db_id,
         )
 
         self.session.add(db_message)

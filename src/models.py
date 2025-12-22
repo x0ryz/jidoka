@@ -25,6 +25,32 @@ class MessageStatus(str, Enum):
     RECEIVED = "received"
 
 
+class Template(SQLModel, table=True):
+    """WhatsApp Message Templates synced from Meta"""
+
+    __tablename__ = "templates"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+
+    waba_id: UUID = Field(foreign_key="waba_accounts.id")
+    waba: Optional["WabaAccount"] = Relationship(back_populates="templates")
+
+    meta_template_id: str = Field(index=True, unique=True)
+    name: str = Field(index=True)
+    language: str
+    status: str
+    category: str
+
+    components: list[Dict[str, Any]] = Field(default=[], sa_column=Column(JSONB))
+
+    created_at: datetime = Field(
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    )
+    updated_at: datetime = Field(
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    )
+
+
 class WabaAccount(SQLModel, table=True):
     """Business account (phone number connected to WABA)"""
 
@@ -36,6 +62,7 @@ class WabaAccount(SQLModel, table=True):
     account_review_status: Optional[str] = None
     business_verification_status: Optional[str] = None
 
+    templates: list["Template"] = Relationship(back_populates="waba")
     phone_numbers: list["WabaPhoneNumber"] = Relationship(back_populates="waba")
 
 
@@ -125,6 +152,8 @@ class Message(SQLModel, table=True):
 
     message_type: str = Field(default="text")
     body: Optional[str] = Field(default=None)
+
+    template_id: Optional[UUID] = Field(default=None, foreign_key="templates.id")
 
     media_files: list["MediaFile"] = Relationship(back_populates="message")
 

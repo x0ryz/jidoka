@@ -3,7 +3,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.clients.meta import MetaClient
-from src.models import WabaAccount, WabaPhoneNumber, get_utc_now
+from src.models import Template, WabaAccount, WabaPhoneNumber, get_utc_now
 
 
 class SyncService:
@@ -43,6 +43,8 @@ class SyncService:
                 await self._upsert_phone_number(waba_account.id, item)
 
             await self.session.commit()
+
+            await self._sync_templates(waba_account)
             logger.success(f"Synced account '{waba_account.name}' and its phones.")
 
         except Exception as e:
@@ -74,3 +76,38 @@ class SyncService:
             phone_obj.updated_at = get_utc_now()
 
         self.session.add(phone_obj)
+
+    async def _sync_templates(self, waba_account: WabaAccount):
+        logger.info(f"Syncing templates for WABA: {waba_account.name}")
+
+        try:
+            data = await self.meta_client.fetch_templates(waba_account.waba_id)
+
+            for item in data.get("data", []):
+                meta_id = item.get("id")
+
+                stmt = select(Template).where(Template.meta_template_id == meta_id)
+                existing = (await self.session.exec(stmt)).first()
+
+                if not existing:
+                    existing = Template(
+                        waba_id=waba_account.id,
+                        meta_template_id=meta_id,
+                        name=item.get("name"),
+                        language=item.get("language"),
+                        status=item.get("status"),
+                        category=item.get("category"),
+                        components=item.get("components", []),
+                    )
+                else:
+                    existing.status = item.get("status")
+                    existing.components = item.get("components", [])
+                    existing.updated_at = get_utc_now()
+
+                self.session.add(existing)
+
+            await self.session.commit()
+            logger.success("Templates synced successfully")
+
+        except Exception as e:
+            logger.exception("Failed to sync templates")
