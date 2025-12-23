@@ -13,6 +13,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.middleware.cors import CORSMiddleware
 from faststream.redis import RedisBroker
 from redis import asyncio as aioredis
 from sqladmin import Admin
@@ -24,7 +25,7 @@ from src.core.config import settings
 from src.core.database import engine, get_session
 from src.core.logger import setup_logging
 from src.core.websocket import manager
-from src.models import Contact, MediaFile, Message
+from src.models import Contact, Message
 from src.schemas import WebhookEvent
 
 background_tasks = set()
@@ -51,6 +52,15 @@ async def lifespan(app: FastAPI):
 
 logger = setup_logging()
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 admin = Admin(app, engine, title="Jidoka Admin")
 
 
