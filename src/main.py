@@ -2,8 +2,10 @@ import asyncio
 import json
 import uuid
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 from fastapi import (
+    Depends,
     FastAPI,
     HTTPException,
     Query,
@@ -14,11 +16,15 @@ from fastapi import (
 from faststream.redis import RedisBroker
 from redis import asyncio as aioredis
 from sqladmin import Admin
+from sqlalchemy.orm import selectinload
+from sqlmodel import desc, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.config import settings
-from src.core.database import engine
+from src.core.database import engine, get_session
 from src.core.logger import setup_logging
 from src.core.websocket import manager
+from src.models import Contact, MediaFile, Message
 from src.schemas import WebhookEvent
 
 background_tasks = set()
@@ -138,3 +144,36 @@ async def trigger_waba_sync():
         await broker.publish({"request_id": request_id}, channel="sync_account_data")
 
     return {"status": "sync_started", "request_id": request_id}
+
+
+@app.get("/contacts", response_model=list[Contact])
+async def get_contacts(session: AsyncSession = Depends(get_session)):
+    statement = select(Contact).order_by(desc(Contact.updated_at))
+    result = await session.exec(statement)
+    contacts = result.all()
+    return contacts
+
+
+@app.get("/contacts/{contact_id}/messages", response_model=list[Message])
+async def get_chat_history(
+    contact_id: UUID,
+    limit: int = 50,
+    offset: int = 0,
+    session: AsyncSession = Depends(get_session),
+):
+    contact = await session.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    statement = (
+        select(Message)
+        .where(Message.contact_id == contact_id)
+        .options(selectinload(Message.media_files))
+        .order_by(Message.created_at)
+        .offset(offset)
+        .limit(limit)
+    )
+
+    result = await session.exec(statement)
+    messages = result.all()
+    return messages
