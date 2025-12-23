@@ -1,6 +1,9 @@
+import json
+
 import httpx
 from faststream import Context, ContextRepo, FastStream
 from faststream.redis import RedisBroker
+from redis import asyncio as aioredis
 
 from src.clients.meta import MetaClient
 from src.core.config import settings
@@ -39,6 +42,22 @@ async def close_http_client(context: ContextRepo):
         logger.info("HTTPX Client closed")
 
 
+async def publish_ws_update(data: dict):
+    try:
+        # Використовуємо окреме з'єднання для гарантії "чистого" JSON
+        redis = aioredis.from_url(settings.REDIS_URL)
+
+        # Явно перетворюємо в JSON рядок
+        message_json = json.dumps(data, default=str)
+
+        await redis.publish("ws_updates", message_json)
+        await redis.close()
+
+        logger.info(f"WS EVENT PUBLISHED: {message_json}")
+    except Exception as e:
+        logger.error(f"Failed to publish WS update: {e}")
+
+
 @broker.subscriber("whatsapp_messages")
 async def handle_messages(
     message: WhatsAppMessage, client: httpx.AsyncClient = Context("http_client")
@@ -48,7 +67,7 @@ async def handle_messages(
 
         async with async_session_maker() as session:
             meta_client = MetaClient(client)
-            service = WhatsAppService(session, meta_client)
+            service = WhatsAppService(session, meta_client, notifier=publish_ws_update)
 
             await service.send_outbound_message(message)
 
@@ -85,7 +104,7 @@ async def handle_raw_webhook(
 
         try:
             meta_client = MetaClient(client)
-            service = WhatsAppService(session, meta_client)
+            service = WhatsAppService(session, meta_client, notifier=publish_ws_update)
             await service.process_webhook(data)
         except Exception as e:
             logger.exception("Error processing webhook in service")

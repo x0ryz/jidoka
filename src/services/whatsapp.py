@@ -1,7 +1,9 @@
 import mimetypes
 import uuid
+from typing import Awaitable, Callable, Optional
 
 from loguru import logger
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -21,9 +23,20 @@ from src.services.storage import StorageService
 
 
 class WhatsAppService:
-    def __init__(self, session: AsyncSession, meta_client: MetaClient):
+    def __init__(
+        self,
+        session: AsyncSession,
+        meta_client: MetaClient,
+        notifier: Optional[Callable[[dict], Awaitable[None]]] = None,
+    ):
         self.session = session
         self.meta_client = meta_client
+        self.notifier = notifier
+
+    async def _notify(self, event_type: str, data: dict):
+        if self.notifier:
+            payload = {"event": event_type, "data": data}
+            await self.notifier(payload)
 
     async def send_outbound_message(self, message: WhatsAppMessage):
         # Find existing contact or create a new one if it doesn't exist
@@ -71,6 +84,20 @@ class WhatsAppService:
         await self.session.commit()
         await self.session.refresh(db_message)
 
+        await self._notify(
+            "new_message",
+            {
+                "id": str(db_message.id),
+                "phone": message.phone_number,
+                "direction": "outbound",
+                "status": "pending",
+                "body": message.body,
+                "created_at": db_message.created_at.isoformat()
+                if db_message.created_at
+                else None,
+            },
+        )
+
         try:
             # Construct specific payload structure depending on message type
             if message.type == "text":
@@ -105,6 +132,17 @@ class WhatsAppService:
                 db_message.status = MessageStatus.SENT
                 self.session.add(db_message)
                 await self.session.commit()
+
+                await self._notify(
+                    "status_update",
+                    {
+                        "wamid": wamid,
+                        "old_status": "pending",
+                        "new_status": "sent",
+                        "phone": message.phone_number,
+                    },
+                )
+
                 logger.success(
                     f"Message sent to {message.phone_number}. WAMID: {wamid}"
                 )
@@ -150,7 +188,11 @@ class WhatsAppService:
             new_status = status_map.get(new_status_str)
 
             if wamid and new_status:
-                stmt = select(Message).where(Message.wamid == wamid)
+                stmt = (
+                    select(Message)
+                    .where(Message.wamid == wamid)
+                    .options(selectinload(Message.contact))
+                )
                 db_message = (await self.session.exec(stmt)).first()
 
                 if db_message:
@@ -163,6 +205,18 @@ class WhatsAppService:
                         self.session.add(db_message)
                         logger.info(
                             f"Updated status for {wamid}: {old_status} -> {new_status}"
+                        )
+
+                        await self._notify(
+                            "status_update",
+                            {
+                                "wamid": wamid,
+                                "old_status": old_status,
+                                "new_status": new_status,
+                                "phone": db_message.contact.phone_number
+                                if db_message.contact
+                                else None,
+                            },
                         )
                     else:
                         logger.debug(
@@ -218,14 +272,28 @@ class WhatsAppService:
                 message_type=parsed_data["type"],
                 body=parsed_data["body"],
             )
+
             self.session.add(new_msg)
             await self.session.commit()
             await self.session.refresh(new_msg)
+
             if parsed_data["media_id"]:
                 await self._process_media_attachment(
                     new_msg, parsed_data, msg, storage_service
                 )
             logger.info(f"Saved {parsed_data['type']} message from {from_phone}")
+
+            msg_data = {
+                "id": str(new_msg.id),
+                "from": from_phone,
+                "type": new_msg.message_type,
+                "body": new_msg.body,
+                "wamid": new_msg.wamid,
+                "created_at": new_msg.created_at.isoformat()
+                if new_msg.created_at
+                else None,
+            }
+            await self._notify("new_message", msg_data)
 
     def _parse_message_data(self, msg: dict) -> dict:
         """Return structures: {type, body, media_id, caption}"""

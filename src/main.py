@@ -1,17 +1,85 @@
+import asyncio
+import json
 import uuid
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from faststream.redis import RedisBroker
+from redis import asyncio as aioredis
 from sqladmin import Admin
 
 from src.core.config import settings
 from src.core.database import engine
 from src.core.logger import setup_logging
+from src.core.websocket import manager
 from src.schemas import WebhookEvent
 
+background_tasks = set()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Lifespan: Starting up...")
+
+    task = asyncio.create_task(redis_listener())
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
+
+    yield
+
+    logger.info("Lifespan: Shutting down...")
+
+    for task in background_tasks:
+        task.cancel()
+
+    if background_tasks:
+        await asyncio.gather(*background_tasks, return_exceptions=True)
+
+
 logger = setup_logging()
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 admin = Admin(app, engine, title="Jidoka Admin")
+
+
+async def redis_listener():
+    logger.info("Starting Redis Listener...")
+    try:
+        redis = aioredis.from_url(settings.REDIS_URL)
+        pubsub = redis.pubsub()
+        await pubsub.subscribe("ws_updates")
+
+        logger.info("Subscribed to 'ws_updates' channel.")
+
+        async for message in pubsub.listen():
+            # Логуємо все, що приходить (навіть службові повідомлення підписки)
+            # logger.debug(f"Raw Redis event: {message}")
+
+            if message["type"] == "message":
+                logger.info(f"Received message data: {message['data']}")
+                try:
+                    data = json.loads(message["data"])
+                    await manager.broadcast(data)
+                except Exception as e:
+                    logger.error(f"Error broadcasting message: {e}")
+    except Exception as e:
+        logger.error(f"Redis listener crashed: {e}")
+
+
+@app.websocket("/ws/messages")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 
 @app.get("/webhook")

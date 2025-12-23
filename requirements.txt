@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sqlmodel
 sqlalchemy
 asyncpg
@@ -11,3 +11,7 @@ faststream[redis, cli]
 httpx
 loguru
 aioboto3
+websockets
+jinja2
+redis
+asyncio
