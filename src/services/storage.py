@@ -26,3 +26,18 @@ class StorageService:
             )
 
             return object_name
+
+    async def get_presigned_url(self, object_name: str, expires_in: int = 3600) -> str:
+        async with self.session.client(
+            service_name="s3",
+            endpoint_url=settings.R2_ENDPOINT_URL,
+            aws_access_key_id=settings.R2_ACCESS_KEY,
+            aws_secret_access_key=settings.R2_SECRET_KEY,
+            region_name="auto",
+        ) as s3:
+            url = await s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket, "Key": object_name},
+                ExpiresIn=expires_in,
+            )
+            return url

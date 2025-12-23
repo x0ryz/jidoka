@@ -25,8 +25,9 @@ from src.core.config import settings
 from src.core.database import engine, get_session
 from src.core.logger import setup_logging
 from src.core.websocket import manager
-from src.models import Contact, Message
+from src.models import Contact, MediaFile, Message
 from src.schemas import WebhookEvent
+from src.services.storage import StorageService
 
 background_tasks = set()
 
@@ -187,3 +188,20 @@ async def get_chat_history(
     result = await session.exec(statement)
     messages = result.all()
     return list(reversed(messages))
+
+
+@app.get("/media/{media_id}/url")
+async def get_media_url(media_id: UUID, session: AsyncSession = Depends(get_session)):
+    # 1. Знаходимо файл у базі
+    media_file = await session.get(MediaFile, media_id)
+    if not media_file:
+        raise HTTPException(status_code=404, detail="Media file not found")
+
+    # 2. Генеруємо посилання через сервіс стореджу
+    storage = StorageService()
+    try:
+        url = await storage.get_presigned_url(media_file.r2_key)
+        return {"url": url, "mime_type": media_file.file_mime_type}
+    except Exception as e:
+        logger.error(f"Failed to generate URL: {e}")
+        raise HTTPException(status_code=500, detail="Could not generate media URL")
