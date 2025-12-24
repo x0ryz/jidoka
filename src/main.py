@@ -26,7 +26,7 @@ from src.core.database import engine, get_session
 from src.core.logger import setup_logging
 from src.core.websocket import manager
 from src.models import Contact, MediaFile, Message
-from src.schemas import WebhookEvent
+from src.schemas import MediaFileResponse, MessageResponse, WebhookEvent
 from src.services.storage import StorageService
 
 background_tasks = set()
@@ -165,7 +165,7 @@ async def get_contacts(session: AsyncSession = Depends(get_session)):
     return contacts
 
 
-@app.get("/contacts/{contact_id}/messages", response_model=list[Message])
+@app.get("/contacts/{contact_id}/messages", response_model=list[MessageResponse])
 async def get_chat_history(
     contact_id: UUID,
     limit: int = 50,
@@ -187,21 +187,36 @@ async def get_chat_history(
 
     result = await session.exec(statement)
     messages = result.all()
-    return list(reversed(messages))
 
-
-@app.get("/media/{media_id}/url")
-async def get_media_url(media_id: UUID, session: AsyncSession = Depends(get_session)):
-    # 1. Знаходимо файл у базі
-    media_file = await session.get(MediaFile, media_id)
-    if not media_file:
-        raise HTTPException(status_code=404, detail="Media file not found")
-
-    # 2. Генеруємо посилання через сервіс стореджу
+    # Генеруємо URL для медіа-файлів
     storage = StorageService()
-    try:
-        url = await storage.get_presigned_url(media_file.r2_key)
-        return {"url": url, "mime_type": media_file.file_mime_type}
-    except Exception as e:
-        logger.error(f"Failed to generate URL: {e}")
-        raise HTTPException(status_code=500, detail="Could not generate media URL")
+    response_data = []
+
+    for msg in messages:
+        media_dtos = []
+        for mf in msg.media_files:
+            url = await storage.get_presigned_url(mf.r2_key)
+            media_dtos.append(
+                MediaFileResponse(
+                    id=mf.id,
+                    file_name=mf.file_name,
+                    file_mime_type=mf.file_mime_type,
+                    url=url,
+                    caption=mf.caption,
+                )
+            )
+
+        response_data.append(
+            MessageResponse(
+                id=msg.id,
+                wamid=msg.wamid,
+                direction=msg.direction,
+                status=msg.status,
+                message_type=msg.message_type,
+                body=msg.body,
+                created_at=msg.created_at,
+                media_files=media_dtos,
+            )
+        )
+
+    return list(reversed(response_data))

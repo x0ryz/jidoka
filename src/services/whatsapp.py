@@ -277,10 +277,28 @@ class WhatsAppService:
             await self.session.commit()
             await self.session.refresh(new_msg)
 
+            # Підготовка списку медіа для нотифікації
+            media_files_list = []
+
             if parsed_data["media_id"]:
-                await self._process_media_attachment(
+                media_entry = await self._process_media_attachment(
                     new_msg, parsed_data, msg, storage_service
                 )
+                if media_entry:
+                    # Генеруємо URL одразу, щоб віддати на фронтенд через WS
+                    media_url = await storage_service.get_presigned_url(
+                        media_entry.r2_key
+                    )
+                    media_files_list.append(
+                        {
+                            "id": str(media_entry.id),
+                            "file_name": media_entry.file_name,
+                            "file_mime_type": media_entry.file_mime_type,
+                            "url": media_url,
+                            "caption": media_entry.caption,
+                        }
+                    )
+
             logger.info(f"Saved {parsed_data['type']} message from {from_phone}")
 
             msg_data = {
@@ -292,6 +310,7 @@ class WhatsAppService:
                 "created_at": new_msg.created_at.isoformat()
                 if new_msg.created_at
                 else None,
+                "media_files": media_files_list,
             }
             await self._notify("new_message", msg_data)
 
@@ -323,7 +342,7 @@ class WhatsAppService:
         parsed_data: dict,
         raw_msg: dict,
         storage: StorageService,
-    ):
+    ) -> Optional[MediaFile]:
         try:
             media_id = parsed_data["media_id"]
 
@@ -353,8 +372,11 @@ class WhatsAppService:
             )
             self.session.add(media_entry)
             await self.session.commit()
+            await self.session.refresh(media_entry)
 
             logger.info(f"Saved media to R2 and linked to message: {r2_key}")
+            return media_entry
 
         except Exception as e:
             logger.error(f"Media processing failed for msg {db_message.id}: {e}")
+            return None
