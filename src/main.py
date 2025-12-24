@@ -14,7 +14,6 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from faststream.redis import RedisBroker
 from prometheus_fastapi_instrumentator import Instrumentator
 from redis import asyncio as aioredis
 from sqladmin import Admin
@@ -22,12 +21,13 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.api.routes import webhooks
 from src.core.config import settings
 from src.core.database import engine, get_session
 from src.core.logger import setup_logging
 from src.core.websocket import manager
 from src.models import Contact, Message
-from src.schemas import MediaFileResponse, MessageResponse, WebhookEvent
+from src.schemas import MediaFileResponse, MessageResponse
 from src.services.storage import StorageService
 
 background_tasks = set()
@@ -75,6 +75,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(webhooks.router)
 
 instrumentator = Instrumentator(
     should_group_status_codes=False,
@@ -124,31 +126,6 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-
-
-@app.get("/webhook")
-async def verify_webhook(
-    hub_mode: str = Query(alias="hub.mode"),
-    hub_verify_token: str = Query(alias="hub.verify_token"),
-    hub_challenge: str = Query(alias="hub.challenge"),
-):
-    if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
-        return int(hub_challenge or 0)
-
-    raise HTTPException(status_code=403, detail="Invalid token")
-
-
-@app.post("/webhook")
-async def receive_webhook(request: Request):
-    try:
-        data = await request.json()
-    except Exception:
-        return {"status": "ignored"}
-
-    async with RedisBroker(settings.REDIS_URL) as broker:
-        await broker.publish(WebhookEvent(payload=data), channel="raw_webhooks")
-
-    return {"status": "ok"}
 
 
 @app.post("/send_message/{phone}")
