@@ -15,6 +15,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from faststream.redis import RedisBroker
+from prometheus_fastapi_instrumentator import Instrumentator
 from redis import asyncio as aioredis
 from sqladmin import Admin
 from sqlalchemy.orm import selectinload
@@ -25,7 +26,7 @@ from src.core.config import settings
 from src.core.database import engine, get_session
 from src.core.logger import setup_logging
 from src.core.websocket import manager
-from src.models import Contact, MediaFile, Message
+from src.models import Contact, Message
 from src.schemas import MediaFileResponse, MessageResponse, WebhookEvent
 from src.services.storage import StorageService
 
@@ -62,7 +63,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-admin = Admin(app, engine, title="Jidoka Admin")
+instrumentator = Instrumentator(
+    should_group_status_codes=False,
+    should_ignore_untemplated=True,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=[
+        ".*admin.*",
+        "/metrics",
+    ],
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="inprogress",
+    inprogress_labels=True,
+)
+
+instrumentator.instrument(app).expose(app)
 
 
 async def redis_listener():
