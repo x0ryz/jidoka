@@ -37,6 +37,13 @@ background_tasks = set()
 async def lifespan(app: FastAPI):
     logger.info("Lifespan: Starting up...")
 
+    redis = aioredis.from_url(
+        settings.REDIS_URL, encoding="utf-8", decode_responses=True
+    )
+
+    app.state.redis = redis
+    logger.info("Redis pool initialized")
+
     task = asyncio.create_task(redis_listener())
     background_tasks.add(task)
     task.add_done_callback(background_tasks.discard)
@@ -50,6 +57,12 @@ async def lifespan(app: FastAPI):
 
     if background_tasks:
         await asyncio.gather(*background_tasks, return_exceptions=True)
+
+    await app.state.redis.close()
+    logger.info("Redis client closed")
+
+    await engine.dispose()
+    logger.info("Database engine disposed")
 
 
 logger = setup_logging()
@@ -140,33 +153,40 @@ async def receive_webhook(request: Request):
 
 @app.post("/send_message/{phone}")
 async def send_message(
-    phone: str, type: str = "text", text: str = "This is a test message from the API."
+    request: Request,
+    phone: str,
+    type: str = "text",
+    text: str = "This is a test message from the API.",
 ):
     request_id = str(uuid.uuid4())
 
-    async with RedisBroker(settings.REDIS_URL) as broker:
-        logger.info("New API request received", request_id=request_id)
+    payload = {
+        "phone_number": phone,
+        "type": type,
+        "body": text,
+        "request_id": request_id,
+    }
 
-        await broker.publish(
-            {
-                "phone_number": phone,
-                "type": type,
-                "body": text,
-                "request_id": request_id,
-            },
-            channel="whatsapp_messages",
-        )
+    try:
+        await request.app.state.redis.publish("whatsapp_messages", json.dumps(payload))
+    except Exception as e:
+        logger.error(f"Failed to publish to Redis: {e}")
+        return {"status": "error", "detail": "Internal Broker Error"}
 
-        return {"status": "sent", "request_id": request_id}
+    return {"status": "sent", "request_id": request_id}
 
 
 @app.post("/waba/sync")
-async def trigger_waba_sync():
+async def trigger_waba_sync(request: Request):
     """Sends a command to the worker to update data from Meta."""
     request_id = str(uuid.uuid4())
+    payload = {"request_id": request_id}
 
-    async with RedisBroker(settings.REDIS_URL) as broker:
-        await broker.publish({"request_id": request_id}, channel="sync_account_data")
+    try:
+        await request.app.state.redis.publish("sync_account_data", json.dumps(payload))
+    except Exception as e:
+        logger.error(f"Failed to publish to Redis: {e}")
+        return {"status": "error", "detail": "Internal Broker Error"}
 
     return {"status": "sync_started", "request_id": request_id}
 
