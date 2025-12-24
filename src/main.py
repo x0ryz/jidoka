@@ -8,7 +8,6 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
-    Query,
     Request,
     WebSocket,
     WebSocketDisconnect,
@@ -16,16 +15,15 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from redis import asyncio as aioredis
-from sqladmin import Admin
 from sqlalchemy.orm import selectinload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.routes import webhooks
+from src.api.websocket import manager, redis_listener
 from src.core.config import settings
 from src.core.database import engine, get_session
 from src.core.logger import setup_logging
-from src.core.websocket import manager
 from src.models import Contact, Message
 from src.schemas import MediaFileResponse, MessageResponse
 from src.services.storage import StorageService
@@ -92,30 +90,6 @@ instrumentator = Instrumentator(
 )
 
 instrumentator.instrument(app).expose(app)
-
-
-async def redis_listener():
-    logger.info("Starting Redis Listener...")
-    try:
-        redis = aioredis.from_url(settings.REDIS_URL)
-        pubsub = redis.pubsub()
-        await pubsub.subscribe("ws_updates")
-
-        logger.info("Subscribed to 'ws_updates' channel.")
-
-        async for message in pubsub.listen():
-            # Логуємо все, що приходить (навіть службові повідомлення підписки)
-            # logger.debug(f"Raw Redis event: {message}")
-
-            if message["type"] == "message":
-                logger.info(f"Received message data: {message['data']}")
-                try:
-                    data = json.loads(message["data"])
-                    await manager.broadcast(data)
-                except Exception as e:
-                    logger.error(f"Error broadcasting message: {e}")
-    except Exception as e:
-        logger.error(f"Redis listener crashed: {e}")
 
 
 @app.websocket("/ws/messages")
