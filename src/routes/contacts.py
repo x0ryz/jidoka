@@ -15,7 +15,9 @@ router = APIRouter(tags=["Contacts"])
 
 @router.get("/contacts", response_model=list[Contact])
 async def get_contacts(session: AsyncSession = Depends(get_session)):
-    statement = select(Contact).order_by(desc(Contact.updated_at))
+    statement = select(Contact).order_by(
+        desc(Contact.unread_count), desc(Contact.updated_at)
+    )
     result = await session.exec(statement)
     contacts = result.all()
     return contacts
@@ -31,6 +33,11 @@ async def get_chat_history(
     contact = await session.get(Contact, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
+
+    if contact.unread_count > 0:
+        contact.unread_count = 0
+        session.add(contact)
+        await session.commit()
 
     statement = (
         select(Message)

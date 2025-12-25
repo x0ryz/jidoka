@@ -4,10 +4,7 @@ from loguru import logger
 
 from src.clients.meta import MetaClient
 from src.core.uow import UnitOfWork
-from src.models import (
-    MessageDirection,
-    MessageStatus,
-)
+from src.models import MessageDirection, MessageStatus, get_utc_now
 from src.schemas import MetaMessage, MetaStatus, MetaWebhookPayload
 from src.services.storage import StorageService
 from src.services.whatsapp.media import WhatsAppMediaService
@@ -106,6 +103,10 @@ class WhatsAppHandlerService:
                     continue
 
                 contact = await self.uow.contacts.get_or_create(msg.from_)
+
+                contact.unread_count += 1
+                contact.updated_at = get_utc_now()
+                self.uow.session.add(contact)
 
                 body = None
                 if msg.type == "text" and msg.text:

@@ -1,9 +1,7 @@
 import mimetypes
 import uuid
-from typing import Optional
 
 from loguru import logger
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.clients.meta import MetaClient
 from src.core.config import settings
