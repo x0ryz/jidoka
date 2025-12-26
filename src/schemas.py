@@ -4,7 +4,7 @@ from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from src.models import MessageDirection, MessageStatus
+from src.models import CampaignStatus, ContactStatus, MessageDirection, MessageStatus
 
 
 class WhatsAppMessage(BaseModel):
@@ -53,6 +53,7 @@ class MetaStatus(BaseModel):
     status: str
     timestamp: str
     recipient_id: str
+    errors: Optional[List[dict]] = None
 
 
 class MetaValue(BaseModel):
@@ -103,6 +104,131 @@ class MessageResponse(BaseModel):
     body: str | None = None
     created_at: datetime | None = None
     media_files: list[MediaFileResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignCreate(BaseModel):
+    """Schema for creating a new campaign"""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    message_type: Literal["text", "template"] = "template"
+    template_id: Optional[uuid.UUID] = None
+    message_body: Optional[str] = None
+    messages_per_second: int = Field(default=10, ge=1, le=20)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "Black Friday Campaign",
+                "message_type": "template",
+                "template_id": "123e4567-e89b-12d3-a456-426614174000",
+                "messages_per_second": 10,
+            }
+        }
+
+
+class CampaignUpdate(BaseModel):
+    """Schema for updating campaign"""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    message_type: Optional[Literal["text", "template"]] = None
+    template_id: Optional[uuid.UUID] = None
+    message_body: Optional[str] = None
+    messages_per_second: Optional[int] = Field(None, ge=1, le=20)
+
+
+class CampaignSchedule(BaseModel):
+    """Schema for scheduling a campaign"""
+
+    scheduled_at: datetime = Field(
+        ..., description="ISO 8601 datetime when to start the campaign"
+    )
+
+    class Config:
+        json_schema_extra = {"example": {"scheduled_at": "2025-12-26T10:00:00Z"}}
+
+
+class CampaignStats(BaseModel):
+    """Campaign statistics"""
+
+    id: uuid.UUID
+    name: str
+    status: CampaignStatus
+    total_contacts: int
+    sent_count: int
+    delivered_count: int
+    failed_count: int
+    progress_percent: float
+
+    scheduled_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignResponse(BaseModel):
+    """Full campaign response"""
+
+    id: uuid.UUID
+    name: str
+    status: CampaignStatus
+    message_type: str
+    template_id: Optional[uuid.UUID] = None
+    message_body: Optional[str] = None
+
+    scheduled_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    total_contacts: int
+    sent_count: int
+    delivered_count: int
+    failed_count: int
+
+    messages_per_second: int
+
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ContactImport(BaseModel):
+    """Single contact for import"""
+
+    phone_number: str
+    name: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+
+
+class ContactImportResult(BaseModel):
+    """Result of contact import"""
+
+    total: int
+    imported: int
+    skipped: int
+    errors: List[str] = Field(default_factory=list)
+
+
+class CampaignContactResponse(BaseModel):
+    """Campaign contact link response"""
+
+    id: uuid.UUID
+    contact_id: uuid.UUID
+    phone_number: str
+    name: Optional[str] = None
+    status: ContactStatus
+    last_sent_at: Optional[datetime] = None
+    error_message: Optional[str] = None
+    retry_count: int
 
     class Config:
         from_attributes = True

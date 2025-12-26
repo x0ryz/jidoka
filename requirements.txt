@@ -18,3 +18,5 @@ asyncio
 tenacity
 gunicorn
 prometheus-fastapi-instrumentator
+openpyxl
+python-multipart

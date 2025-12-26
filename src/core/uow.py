@@ -2,6 +2,7 @@ from typing import Callable
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.repositories.campaign import CampaignContactRepository, CampaignRepository
 from src.repositories.contact import ContactRepository
 from src.repositories.media import MediaRepository
 from src.repositories.message import MessageRepository
@@ -16,20 +17,33 @@ class UnitOfWork:
 
     async def __aenter__(self):
         self.session = self.session_factory()
+
+        # Існуючі репозиторії
         self.messages = MessageRepository(self.session)
         self.contacts = ContactRepository(self.session)
         self.waba = WabaRepository(self.session)
         self.templates = TemplateRepository(self.session)
         self.media = MediaRepository(self.session)
 
+        # Нові репозиторії для кампаній
+        self.campaigns = CampaignRepository(self.session)
+        self.campaign_contacts = CampaignContactRepository(self.session)
+
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         try:
             if exc_type:
-                await self.session.rollback()
+                await self.rollback()
             else:
-                await self.session.commit()
-
+                await self.commit()
         finally:
             await self.session.close()
+
+    async def commit(self):
+        """Manually commit changes"""
+        await self.session.commit()
+
+    async def rollback(self):
+        """Manually rollback changes"""
+        await self.session.rollback()

@@ -10,7 +10,8 @@ from src.core.config import settings
 from src.core.database import engine
 from src.core.logger import setup_logging
 from src.core.websocket import redis_listener
-from src.routes import contacts, messages, waba, webhooks
+from src.routes import campaigns, contacts, messages, waba, webhooks
+from src.services.campaign import CampaignScheduler
 
 background_tasks = set()
 
@@ -26,9 +27,17 @@ async def lifespan(app: FastAPI):
     app.state.redis = redis
     logger.info("Redis pool initialized")
 
-    task = asyncio.create_task(redis_listener())
-    background_tasks.add(task)
-    task.add_done_callback(background_tasks.discard)
+    # Start WebSocket Redis listener
+    ws_task = asyncio.create_task(redis_listener())
+    background_tasks.add(ws_task)
+    ws_task.add_done_callback(background_tasks.discard)
+
+    # Start Campaign Scheduler
+    scheduler = CampaignScheduler()
+    scheduler_task = asyncio.create_task(scheduler.start())
+    background_tasks.add(scheduler_task)
+    scheduler_task.add_done_callback(background_tasks.discard)
+    logger.info("Campaign Scheduler started")
 
     yield
 
@@ -62,6 +71,7 @@ app.include_router(webhooks.router)
 app.include_router(contacts.router)
 app.include_router(messages.router)
 app.include_router(waba.router)
+app.include_router(campaigns.router)
 
 instrumentator = Instrumentator(
     should_group_status_codes=False,

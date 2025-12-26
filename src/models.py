@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy.dialects.postgresql import JSONB
@@ -23,6 +23,26 @@ class MessageStatus(str, Enum):
     READ = "read"
     FAILED = "failed"
     RECEIVED = "received"
+
+
+class ContactStatus(str, Enum):
+    NEW = "new"
+    SCHEDULED = "scheduled"
+    SENT = "sent"
+    DELIVERED = "delivered"
+    READ = "read"
+    FAILED = "failed"
+    OPTED_OUT = "opted_out"
+    BLOCKED = "blocked"
+
+
+class CampaignStatus(str, Enum):
+    DRAFT = "draft"
+    SCHEDULED = "scheduled"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class Template(SQLModel, table=True):
@@ -49,6 +69,8 @@ class Template(SQLModel, table=True):
     updated_at: datetime = Field(
         default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
+
+    campaigns: list["Campaign"] = Relationship(back_populates="template")
 
 
 class WabaAccount(SQLModel, table=True):
@@ -104,6 +126,17 @@ class Contact(SQLModel, table=True):
 
     unread_count: int = Field(default=0)
 
+    # Campaign tracking
+    status: ContactStatus = Field(default=ContactStatus.NEW)
+
+    # 24-hour window tracking
+    last_message_at: Optional[datetime] = None
+    can_message_after: Optional[datetime] = None
+
+    # Metadata
+    source: Optional[str] = None  # "import_csv", "manual", "webhook"
+    tags: List[str] = Field(default=[], sa_column=Column(JSONB))
+
     created_at: datetime = Field(
         default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
@@ -112,6 +145,94 @@ class Contact(SQLModel, table=True):
     )
 
     messages: list["Message"] = Relationship(back_populates="contact")
+    campaign_links: list["CampaignContact"] = Relationship(back_populates="contact")
+
+
+class Campaign(SQLModel, table=True):
+    """Campaign for mass messaging"""
+
+    __tablename__ = "campaigns"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    name: str
+    status: CampaignStatus = Field(default=CampaignStatus.DRAFT, index=True)
+
+    # Message configuration
+    message_type: str = Field(default="template")  # "text" or "template"
+    template_id: Optional[UUID] = Field(default=None, foreign_key="templates.id")
+    message_body: Optional[str] = None
+
+    # Scheduling
+    scheduled_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+    started_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+    completed_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+
+    # Statistics
+    total_contacts: int = Field(default=0)
+    sent_count: int = Field(default=0)
+    delivered_count: int = Field(default=0)
+    failed_count: int = Field(default=0)
+
+    # Rate limiting
+    messages_per_second: int = Field(default=10)
+
+    created_at: datetime = Field(
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    )
+    updated_at: datetime = Field(
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    )
+
+    # Relationships
+    template: Optional[Template] = Relationship(back_populates="campaigns")
+    contacts: list["CampaignContact"] = Relationship(
+        back_populates="campaign",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
+
+class CampaignContact(SQLModel, table=True):
+    """Link between campaigns and contacts"""
+
+    __tablename__ = "campaign_contacts"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+
+    campaign_id: UUID = Field(foreign_key="campaigns.id", index=True)
+    contact_id: UUID = Field(foreign_key="contacts.id", index=True)
+
+    status: ContactStatus = Field(default=ContactStatus.NEW, index=True)
+    message_id: Optional[UUID] = Field(default=None, foreign_key="messages.id")
+
+    # 24-hour window
+    last_sent_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+    can_send_after: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
+
+    # Error tracking
+    error_message: Optional[str] = None
+    retry_count: int = Field(default=0)
+
+    created_at: datetime = Field(
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    )
+    updated_at: datetime = Field(
+        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    )
+
+    # Relationships
+    campaign: Optional[Campaign] = Relationship(back_populates="contacts")
+    contact: Optional[Contact] = Relationship(back_populates="campaign_links")
+    message: Optional["Message"] = Relationship()
 
 
 class MediaFile(SQLModel, table=True):

@@ -60,7 +60,12 @@ async def redis_listener():
                     try:
                         payload = json.loads(raw_data)
 
-                        logger.info(f"WS sending: {payload.get('type', 'unknown')}")
+                        # ВИПРАВЛЕНО: перевіряємо і 'event', і 'type'
+                        event_name = (
+                            payload.get("event") or payload.get("type") or "unknown"
+                        )
+
+                        logger.info(f"WS sending: {event_name}")
                         await manager.broadcast(payload)
                     except json.JSONDecodeError:
                         logger.error(f"Failed to decode Redis message: {raw_data}")

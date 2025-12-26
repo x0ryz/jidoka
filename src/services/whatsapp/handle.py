@@ -70,6 +70,9 @@ class WhatsAppHandlerService:
                         db_message.status = new_status
                         self.uow.session.add(db_message)
 
+                        if new_status == MessageStatus.FAILED and status.errors:
+                            logger.error(f"Message {status.id} failed: {status.errors}")
+
                         await self._notify(
                             "status_update",
                             {
