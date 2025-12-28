@@ -221,7 +221,6 @@ class CampaignContactResponse(BaseModel):
     phone_number: str
     name: Optional[str] = None
     status: ContactStatus
-    last_sent_at: Optional[datetime] = None
     error_message: Optional[str] = None
     retry_count: int
 

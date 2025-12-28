@@ -12,7 +12,15 @@ from src.core.config import settings
 from src.core.database import engine
 from src.core.logger import setup_logging
 from src.core.websocket import redis_listener
-from src.routes import campaigns, contacts, messages, waba, webhooks
+from src.routes import (
+    campaigns,
+    contacts,
+    dashboard,
+    messages,
+    templates,
+    waba,
+    webhooks,
+)
 
 background_tasks = set()
 
@@ -81,3 +89,5 @@ app.include_router(contacts.router)
 app.include_router(messages.router)
 app.include_router(waba.router)
 app.include_router(campaigns.router)
+app.include_router(templates.router)
+app.include_router(dashboard.router)

@@ -416,7 +416,6 @@ async def get_campaign_contacts(
                     phone_number=link.contact.phone_number,
                     name=link.contact.name,
                     status=link.status,
-                    last_sent_at=link.last_sent_at,
                     error_message=link.error_message,
                     retry_count=link.retry_count,
                 )
