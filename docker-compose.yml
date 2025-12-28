@@ -45,41 +45,14 @@ services:
     networks:
       - default
 
-  prometheus:
-    image: prom/prometheus:latest
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-    ports:
-      - "9090:9090"
-    networks:
-      - default
-
-  loki:
-    image: grafana/loki:latest
-    command: -config.file=/etc/loki/local-config.yaml
-    ports:
-      - "3100:3100"
-    networks:
-      - default
-
-  promtail:
-    image: grafana/promtail:latest
-    volumes:
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./monitoring/promtail.yml:/etc/promtail/config.yml
-    command: -config.file=/etc/promtail/config.yml
-    networks:
-      - default
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+  scheduler:
+    build: .
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    command: taskiq scheduler src.core.broker:scheduler src.worker
     networks:
       - default
 

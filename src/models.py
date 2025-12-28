@@ -130,8 +130,9 @@ class Contact(SQLModel, table=True):
     status: ContactStatus = Field(default=ContactStatus.NEW)
 
     # 24-hour window tracking
-    last_message_at: Optional[datetime] = None
-    can_message_after: Optional[datetime] = None
+    last_message_at: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True))
+    )
 
     # Metadata
     source: Optional[str] = None  # "import_csv", "manual", "webhook"
@@ -179,9 +180,6 @@ class Campaign(SQLModel, table=True):
     delivered_count: int = Field(default=0)
     failed_count: int = Field(default=0)
 
-    # Rate limiting
-    messages_per_second: int = Field(default=10)
-
     created_at: datetime = Field(
         default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
     )
@@ -209,14 +207,6 @@ class CampaignContact(SQLModel, table=True):
 
     status: ContactStatus = Field(default=ContactStatus.NEW, index=True)
     message_id: Optional[UUID] = Field(default=None, foreign_key="messages.id")
-
-    # 24-hour window
-    last_sent_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
-    )
-    can_send_after: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
-    )
 
     # Error tracking
     error_message: Optional[str] = None

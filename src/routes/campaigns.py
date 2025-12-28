@@ -1,12 +1,10 @@
-import json
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.core.database import async_session_maker, get_session
+from src.core.database import get_session
 from src.core.uow import UnitOfWork
 from src.models import CampaignStatus, get_utc_now
 from src.schemas import (
@@ -19,7 +17,8 @@ from src.schemas import (
     ContactImport,
     ContactImportResult,
 )
-from src.services.campaign.import_service import ContactImportService
+from src.services.campaign.importer import ContactImportService
+from src.worker import handle_campaign_resume_task, handle_campaign_start_task
 
 router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
 
@@ -35,7 +34,6 @@ async def create_campaign(
     - **message_type**: "text" or "template" (default: template)
     - **template_id**: UUID of template (required if message_type=template)
     - **message_body**: Text body (required if message_type=text)
-    - **messages_per_second**: Rate limit (1-20, default: 10)
     """
     uow = UnitOfWork(lambda: session)
 
@@ -73,7 +71,6 @@ async def create_campaign(
             message_type=data.message_type,
             template_id=data.template_id,
             message_body=data.message_body,
-            messages_per_second=data.messages_per_second,
             status=CampaignStatus.DRAFT,
         )
 
@@ -265,10 +262,8 @@ async def start_campaign_now(
                 detail="Cannot start campaign with no contacts",
             )
 
-        # Publish to Redis for worker to process
         try:
-            payload = {"campaign_id": str(campaign_id)}
-            await request.app.state.redis.publish("campaign_start", json.dumps(payload))
+            await handle_campaign_start_task.kiq(str(campaign_id))
             logger.info(f"Campaign start published: {campaign_id}")
         except Exception as e:
             logger.error(f"Failed to publish campaign start: {e}")
@@ -336,12 +331,8 @@ async def resume_campaign(
                 detail="Can only resume paused campaigns",
             )
 
-        # Publish to Redis for worker to resume
         try:
-            payload = {"campaign_id": str(campaign_id)}
-            await request.app.state.redis.publish(
-                "campaign_resume", json.dumps(payload)
-            )
+            await handle_campaign_resume_task.kiq(str(campaign_id))
             logger.info(f"Campaign resume published: {campaign_id}")
         except Exception as e:
             logger.error(f"Failed to publish campaign resume: {e}")

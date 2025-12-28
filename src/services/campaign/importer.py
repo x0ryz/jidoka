@@ -29,34 +29,20 @@ class ContactImportService:
         if not phone:
             return None
 
-        # Залишаємо тільки цифри
         digits = re.sub(r"\D", "", phone)
 
-        # 1. Якщо номер вже має код країни (UA, PL, DE)
-        # UA: 12 цифр, починається на 380
         if digits.startswith("380") and len(digits) == 12:
             return digits
 
-        # PL: 11 цифр, починається на 48
         if digits.startswith("48") and len(digits) == 11:
             return digits
 
-        # DE: 11-15 цифр, починається на 49
         if digits.startswith("49") and 11 <= len(digits) <= 15:
             return digits
 
-        # 2. Обробка локальних форматів
-
-        # UA: Починається з 0, довжина 10 (наприклад 0671234567)
         if digits.startswith("0") and len(digits) == 10:
             return f"38{digits}"
 
-        # UA (без 0) або PL (локальний): 9 цифр
-        # Тут є неоднозначність. Старий код додавав 380.
-        # Якщо хочете підтримку польських локальних (9 цифр), треба знати контекст.
-        # Але зазвичай для API краще вимагати код країни або 0 для України.
-        # Я залишу логіку "якщо 9 цифр - додаємо 380" як fallback,
-        # АЛЕ якщо це польський номер, користувач має вводити 48...
         if len(digits) == 9:
             return f"380{digits}"
 
@@ -67,11 +53,9 @@ class ContactImportService:
         if not phone:
             return False
 
-        # Перевіряємо, чи є в рядку тільки цифри
         if not phone.isdigit():
             return False
 
-        # WhatsApp API дозволяє номери від ~10 до 15 цифр
         if len(phone) < 10 or len(phone) > 15:
             return False
 
@@ -114,19 +98,11 @@ class ContactImportService:
     async def import_from_csv(
         self, campaign_id: UUID, file_content: bytes
     ) -> ContactImportResult:
-        """
-        Import contacts from CSV file.
-
-        Expected format:
-        phone_number,name,tags
-        +380671234567,John Doe,vip;active
-        0671234568,Jane Smith,new
-        """
         result = ContactImportResult(total=0, imported=0, skipped=0, errors=[])
 
         try:
             # Decode file
-            text = file_content.decode("utf-8-sig")  # Handle BOM
+            text = file_content.decode("utf-8-sig")
             reader = csv.DictReader(io.StringIO(text))
 
             contacts_to_import: list[ContactImport] = []

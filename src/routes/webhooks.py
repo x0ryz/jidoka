@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from src.core.config import settings
 from src.schemas import WebhookEvent
+from src.worker import handle_raw_webhook_task
 
 router = APIRouter(prefix="/webhook", tags=["Webhooks"])
 
@@ -27,10 +28,10 @@ async def receive_webhook(request: Request):
     except json.JSONDecodeError:
         return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Invalid JSON")
 
-    event_json = WebhookEvent(payload=data).model_dump_json()
+    event = WebhookEvent(payload=data)
 
     try:
-        await request.app.state.redis.publish("raw_webhooks", event_json)
+        await handle_raw_webhook_task.kiq(event)
     except Exception:
         return Response(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -11,7 +11,7 @@ services:
     container_name: jidoka_worker_dev
     volumes:
       - .:/app
-    command: faststream run src.worker:app --reload
+    command: taskiq worker src.core.broker:broker src.worker
 
   db:
     ports:

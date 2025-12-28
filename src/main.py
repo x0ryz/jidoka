@@ -1,17 +1,18 @@
 import asyncio
 from contextlib import asynccontextmanager
 
+import sentry_sdk
+import taskiq_fastapi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
 from redis import asyncio as aioredis
 
+from src.core.broker import broker
 from src.core.config import settings
 from src.core.database import engine
 from src.core.logger import setup_logging
 from src.core.websocket import redis_listener
 from src.routes import campaigns, contacts, messages, waba, webhooks
-from src.services.campaign import CampaignScheduler
 
 background_tasks = set()
 
@@ -27,17 +28,12 @@ async def lifespan(app: FastAPI):
     app.state.redis = redis
     logger.info("Redis pool initialized")
 
-    # Start WebSocket Redis listener
     ws_task = asyncio.create_task(redis_listener())
     background_tasks.add(ws_task)
     ws_task.add_done_callback(background_tasks.discard)
 
-    # Start Campaign Scheduler
-    scheduler = CampaignScheduler()
-    scheduler_task = asyncio.create_task(scheduler.start())
-    background_tasks.add(scheduler_task)
-    scheduler_task.add_done_callback(background_tasks.discard)
-    logger.info("Campaign Scheduler started")
+    if not broker.is_worker_process:
+        await broker.startup()
 
     yield
 
@@ -49,6 +45,9 @@ async def lifespan(app: FastAPI):
     if background_tasks:
         await asyncio.gather(*background_tasks, return_exceptions=True)
 
+    if not broker.is_worker_process:
+        await broker.shutdown()
+
     await app.state.redis.close()
     logger.info("Redis client closed")
 
@@ -56,8 +55,18 @@ async def lifespan(app: FastAPI):
     logger.info("Database engine disposed")
 
 
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        send_default_pii=True,
+        enable_logs=True,
+    )
+
+
 logger = setup_logging()
 app = FastAPI(lifespan=lifespan)
+
+taskiq_fastapi.init(broker, app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,18 +81,3 @@ app.include_router(contacts.router)
 app.include_router(messages.router)
 app.include_router(waba.router)
 app.include_router(campaigns.router)
-
-instrumentator = Instrumentator(
-    should_group_status_codes=False,
-    should_ignore_untemplated=True,
-    should_instrument_requests_inprogress=True,
-    excluded_handlers=[
-        ".*admin.*",
-        "/metrics",
-    ],
-    env_var_name="ENABLE_METRICS",
-    inprogress_name="inprogress",
-    inprogress_labels=True,
-)
-
-instrumentator.instrument(app).expose(app)

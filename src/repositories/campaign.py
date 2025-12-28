@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.orm import selectinload
-from sqlmodel import or_, select
+from sqlmodel import select
 
 from src.models import (
     Campaign,
@@ -82,17 +82,11 @@ class CampaignContactRepository(BaseRepository[CampaignContact]):
         self, campaign_id: UUID, limit: int = 500
     ) -> list[CampaignContact]:
         """Get contacts ready to be sent (respecting 24h window)"""
-        now = get_utc_now()
-
         stmt = (
             select(CampaignContact)
             .where(
                 CampaignContact.campaign_id == campaign_id,
                 CampaignContact.status == ContactStatus.NEW,
-                or_(
-                    CampaignContact.can_send_after == None,
-                    CampaignContact.can_send_after <= now,
-                ),
             )
             .options(selectinload(CampaignContact.contact))
             .limit(limit)

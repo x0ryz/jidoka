@@ -1,5 +1,4 @@
-from .import_service import ContactImportService
-from .scheduler import CampaignScheduler
+from .importer import ContactImportService
 from .sender import CampaignSenderService
 
-__all__ = ["ContactImportService", "CampaignSenderService", "CampaignScheduler"]
+__all__ = ["ContactImportService", "CampaignSenderService"]

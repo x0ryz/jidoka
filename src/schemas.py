@@ -116,7 +116,6 @@ class CampaignCreate(BaseModel):
     message_type: Literal["text", "template"] = "template"
     template_id: Optional[uuid.UUID] = None
     message_body: Optional[str] = None
-    messages_per_second: int = Field(default=10, ge=1, le=20)
 
     class Config:
         json_schema_extra = {
@@ -124,7 +123,6 @@ class CampaignCreate(BaseModel):
                 "name": "Black Friday Campaign",
                 "message_type": "template",
                 "template_id": "123e4567-e89b-12d3-a456-426614174000",
-                "messages_per_second": 10,
             }
         }
 
@@ -136,7 +134,6 @@ class CampaignUpdate(BaseModel):
     message_type: Optional[Literal["text", "template"]] = None
     template_id: Optional[uuid.UUID] = None
     message_body: Optional[str] = None
-    messages_per_second: Optional[int] = Field(None, ge=1, le=20)
 
 
 class CampaignSchedule(BaseModel):
@@ -191,8 +188,6 @@ class CampaignResponse(BaseModel):
     sent_count: int
     delivered_count: int
     failed_count: int
-
-    messages_per_second: int
 
     created_at: datetime
     updated_at: datetime

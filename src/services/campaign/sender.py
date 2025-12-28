@@ -1,5 +1,3 @@
-import asyncio
-from datetime import timedelta
 from typing import Awaitable, Callable, Optional
 from uuid import UUID
 
@@ -9,7 +7,6 @@ from src.clients.meta import MetaClient
 from src.core.uow import UnitOfWork
 from src.models import (
     Campaign,
-    CampaignContact,
     CampaignStatus,
     Contact,
     ContactStatus,
@@ -20,7 +17,7 @@ from src.models import (
 
 
 class CampaignSenderService:
-    """Service for sending campaign messages with rate limiting and 24h window check"""
+    """Service for sending single campaign messages without internal scheduling logic"""
 
     def __init__(
         self,
@@ -38,19 +35,8 @@ class CampaignSenderService:
             payload = {"event": event_type, "data": data}
             await self.notifier(payload)
 
-    def _can_send_now(self, contact: Contact) -> bool:
-        """
-        Check if we can send to this contact now (24-hour window).
-        """
-        if not contact.last_message_at:
-            return True
-
-        now = get_utc_now()
-        elapsed = now - contact.last_message_at
-        return elapsed < timedelta(hours=24)
-
     async def start_campaign(self, campaign_id: UUID):
-        """Start campaign execution."""
+        """Start campaign execution (just status update)"""
         async with self.uow:
             campaign = await self.uow.campaigns.get_by_id_with_template(campaign_id)
 
@@ -82,134 +68,44 @@ class CampaignSenderService:
             )
             await self.uow.commit()
 
-    async def process_campaign(self, campaign_id: UUID):
-        """
-        Main worker method to process campaign messages.
-        """
-        logger.info(f"Processing campaign {campaign_id}")
-
-        async with self.uow:
-            campaign = await self.uow.campaigns.get_by_id(campaign_id)
-            if not campaign:
-                logger.error(f"Campaign {campaign_id} not found")
-                return
-
-            if campaign.status != CampaignStatus.RUNNING:
-                logger.warning(
-                    f"Campaign {campaign_id} is {campaign.status}, not RUNNING"
-                )
-                return
-
-            mps = campaign.messages_per_second
-
-        # Process in batches of 500
-        batch_size = 500
-        processed_total = 0
-
-        while True:
-            # Збираємо дані (ID) в рамках однієї транзакції
-            contacts_data = []
-
-            async with self.uow:
-                # Check if still running
-                campaign = await self.uow.campaigns.get_by_id(campaign_id)
-                if not campaign or campaign.status != CampaignStatus.RUNNING:
-                    logger.info(f"Campaign {campaign_id} stopped or paused")
-                    break
-
-                mps = campaign.messages_per_second
-
-                # Get sendable contacts objects
-                contacts_list = await self.uow.campaign_contacts.get_sendable_contacts(
-                    campaign_id, limit=batch_size
-                )
-
-                if not contacts_list:
-                    logger.info(f"No more contacts to send in campaign {campaign_id}")
-                    break
-
-                # Extract IDs to simple dicts/tuples to avoid DetachedInstanceError outside session
-                contacts_data = [(c.id, c.contact_id) for c in contacts_list]
-
-                logger.info(
-                    f"Processing batch of {len(contacts_data)} contacts for campaign {campaign_id}"
-                )
-
-            if not contacts_data:
-                break
-
-            # Send to each contact with rate limiting
-            delay_between_messages = 1.0 / mps
-
-            for link_id, contact_id in contacts_data:
-                # Pass IDs, not objects
-                await self._send_to_contact(campaign_id, link_id, contact_id)
-
-                await asyncio.sleep(delay_between_messages)
-
-                processed_total += 1
-
-                if processed_total % 10 == 0:
-                    await self._notify_progress(campaign_id)
-
-        # Final check and completion
-        await self._check_campaign_completion(campaign_id)
-
-    async def _send_to_contact(
+    async def send_single_message(
         self, campaign_id: UUID, link_id: UUID, contact_id: UUID
     ):
-        """Send message to a single contact by fetching fresh data"""
+        """
+        Main Method: Sends a message to a single contact.
+        No loops, no sleeps. Logic is atomic.
+        """
         try:
             async with self.uow:
-                # 1. Load Campaign (with template)
                 campaign = await self.uow.campaigns.get_by_id_with_template(campaign_id)
-                if not campaign or campaign.status != CampaignStatus.RUNNING:
-                    return
-
-                # 2. Load CampaignContact (fresh)
                 contact_link = await self.uow.campaign_contacts.get_by_id(link_id)
-                if not contact_link:
-                    logger.error(f"CampaignContact {link_id} not found")
-                    return
-
-                # 3. Load Contact (fresh)
                 contact = await self.uow.contacts.get_by_id(contact_id)
-                if not contact:
-                    logger.error(f"Contact {contact_id} not found")
+
+                if not campaign or not contact_link or not contact:
+                    logger.warning(f"Data missing for send task: link {link_id}")
                     return
 
-                # Check 24-hour window
-                if not self._can_send_now(contact):
-                    now = get_utc_now()
-                    can_send_after = contact.last_message_at + timedelta(hours=24)
-
-                    contact_link.status = ContactStatus.SCHEDULED
-                    contact_link.can_send_after = can_send_after
-                    contact_link.updated_at = now
-                    self.uow.session.add(contact_link)
-                    await self.uow.commit()
-
+                if campaign.status != CampaignStatus.RUNNING:
                     logger.info(
-                        f"Contact {contact.phone_number} delayed until {can_send_after}"
+                        f"Skipping contact {contact_id}: Campaign is {campaign.status}"
                     )
                     return
 
-                # Get WABA phone
-                waba_phone = await self.uow.waba.get_default_phone()
-                if not waba_phone:
-                    logger.error("No WABA phone found")
-                    contact_link.status = ContactStatus.FAILED
-                    contact_link.error_message = "No WABA phone available"
-                    self.uow.session.add(contact_link)
-                    await self.uow.commit()
+                if contact_link.status == ContactStatus.SENT:
+                    logger.warning(f"Contact {contact_id} already sent")
                     return
 
-                # Prepare body
+                waba_phone = await self.uow.waba.get_default_phone()
+                if not waba_phone:
+                    await self._mark_as_failed(
+                        contact_link, campaign, "No WABA phone available"
+                    )
+                    return
+
                 body_text = campaign.message_body
                 if campaign.message_type == "template" and campaign.template:
                     body_text = campaign.template.name
 
-                # Create message in DB
                 message = await self.uow.messages.create(
                     auto_flush=True,
                     waba_phone_id=waba_phone.id,
@@ -221,10 +117,8 @@ class CampaignSenderService:
                     template_id=campaign.template_id,
                 )
 
-                # Build WhatsApp payload
                 payload = self._build_whatsapp_payload(campaign, contact)
 
-                # Send via Meta API
                 result = await self.meta_client.send_message(
                     waba_phone.phone_number_id, payload
                 )
@@ -234,25 +128,20 @@ class CampaignSenderService:
                 if wamid:
                     now = get_utc_now()
 
-                    # Update message
                     message.wamid = wamid
                     message.status = MessageStatus.SENT
                     self.uow.session.add(message)
 
-                    # Update contact link
                     contact_link.status = ContactStatus.SENT
                     contact_link.message_id = message.id
-                    contact_link.last_sent_at = now
                     contact_link.updated_at = now
                     self.uow.session.add(contact_link)
 
-                    # Update contact
                     contact.last_message_at = now
                     contact.status = ContactStatus.SENT
                     contact.updated_at = now
                     self.uow.session.add(contact)
 
-                    # Update campaign stats
                     campaign.sent_count += 1
                     campaign.updated_at = now
                     self.uow.session.add(campaign)
@@ -273,30 +162,34 @@ class CampaignSenderService:
                         },
                     )
 
+                    await self._notify_progress(campaign)
+
+                else:
+                    raise Exception("No WAMID in Meta response")
+
         except Exception as e:
             logger.exception(f"Failed to send to contact {contact_id}")
+            async with self.uow:
+                contact_link = await self.uow.campaign_contacts.get_by_id(link_id)
+                campaign = await self.uow.campaigns.get_by_id(campaign_id)
+                if contact_link and campaign:
+                    await self._mark_as_failed(contact_link, campaign, str(e))
 
-            # Update with error (new transaction)
-            try:
-                async with self.uow:
-                    contact_link = await self.uow.campaign_contacts.get_by_id(link_id)
-                    campaign = await self.uow.campaigns.get_by_id(campaign_id)
+        await self._check_campaign_completion(campaign_id)
 
-                    if contact_link:
-                        contact_link.status = ContactStatus.FAILED
-                        contact_link.error_message = str(e)[:500]
-                        contact_link.retry_count += 1
-                        contact_link.updated_at = get_utc_now()
-                        self.uow.session.add(contact_link)
+    async def _mark_as_failed(self, link, campaign, error_msg: str):
+        """Helper to mark contact and campaign stats as failed"""
+        link.status = ContactStatus.FAILED
+        link.error_message = error_msg[:500]
+        link.retry_count += 1
+        link.updated_at = get_utc_now()
+        self.uow.session.add(link)
 
-                    if campaign:
-                        campaign.failed_count += 1
-                        campaign.updated_at = get_utc_now()
-                        self.uow.session.add(campaign)
+        campaign.failed_count += 1
+        campaign.updated_at = get_utc_now()
+        self.uow.session.add(campaign)
 
-                    await self.uow.commit()
-            except Exception as inner_e:
-                logger.error(f"Failed to update error status: {inner_e}")
+        await self.uow.commit()
 
     def _build_whatsapp_payload(self, campaign: Campaign, contact: Contact) -> dict:
         """Build Meta API payload for message"""
@@ -321,29 +214,23 @@ class CampaignSenderService:
 
         return payload
 
-    async def _notify_progress(self, campaign_id: UUID):
-        """Send progress notification"""
-        async with self.uow:
-            campaign = await self.uow.campaigns.get_by_id(campaign_id)
+    async def _notify_progress(self, campaign: Campaign):
+        """Send progress notification based on campaign object"""
+        progress = 0.0
+        if campaign.total_contacts > 0:
+            progress = (campaign.sent_count / campaign.total_contacts) * 100
 
-            if not campaign:
-                return
-
-            progress = 0.0
-            if campaign.total_contacts > 0:
-                progress = (campaign.sent_count / campaign.total_contacts) * 100
-
-            await self._notify(
-                "campaign_progress",
-                {
-                    "campaign_id": str(campaign_id),
-                    "total": campaign.total_contacts,
-                    "sent": campaign.sent_count,
-                    "delivered": campaign.delivered_count,
-                    "failed": campaign.failed_count,
-                    "progress": round(progress, 2),
-                },
-            )
+        await self._notify(
+            "campaign_progress",
+            {
+                "campaign_id": str(campaign.id),
+                "total": campaign.total_contacts,
+                "sent": campaign.sent_count,
+                "delivered": campaign.delivered_count,
+                "failed": campaign.failed_count,
+                "progress": round(progress, 2),
+            },
+        )
 
     async def _check_campaign_completion(self, campaign_id: UUID):
         """Check if campaign is completed and update status"""
@@ -375,7 +262,6 @@ class CampaignSenderService:
                         "name": campaign.name,
                         "total": campaign.total_contacts,
                         "sent": campaign.sent_count,
-                        "delivered": campaign.delivered_count,
                         "failed": campaign.failed_count,
                     },
                 )

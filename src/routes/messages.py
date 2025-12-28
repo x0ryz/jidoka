@@ -1,10 +1,11 @@
-import json
 import uuid
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from src.core.websocket import manager
+from src.schemas import WhatsAppMessage
+from src.worker import handle_messages_task
 
 router = APIRouter(tags=["Messages"])
 
@@ -28,15 +29,12 @@ async def send_message(
 ):
     request_id = str(uuid.uuid4())
 
-    payload = {
-        "phone_number": phone,
-        "type": type,
-        "body": text,
-        "request_id": request_id,
-    }
+    message_obj = WhatsAppMessage(
+        phone_number=phone, type=type, body=text, request_id=request_id
+    )
 
     try:
-        await request.app.state.redis.publish("whatsapp_messages", json.dumps(payload))
+        await handle_messages_task.kiq(message_obj)
     except Exception as e:
         logger.error(f"Failed to publish to Redis: {e}")
         return {"status": "error", "detail": "Internal Broker Error"}

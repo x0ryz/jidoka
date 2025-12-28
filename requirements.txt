@@ -7,7 +7,6 @@ alembic
 pydantic
 pydantic-settings
 sqladmin
-faststream[redis, cli]
 httpx
 loguru
 aioboto3
@@ -17,6 +16,9 @@ redis
 asyncio
 tenacity
 gunicorn
-prometheus-fastapi-instrumentator
 openpyxl
 python-multipart
+taskiq
+taskiq-redis
+taskiq-fastapi
+sentry-sdk[fastapi]
