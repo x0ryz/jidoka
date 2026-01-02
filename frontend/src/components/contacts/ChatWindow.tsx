@@ -1,5 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Contact, MessageResponse, MessageDirection, MessageStatus } from '../../types';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Contact,
+  MessageResponse,
+  MessageDirection,
+  MessageStatus,
+} from "../../types";
 
 interface ChatWindowProps {
   contact: Contact;
@@ -14,7 +19,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   loading,
   onSendMessage,
 }) => {
-  const [messageText, setMessageText] = useState('');
+  const [messageText, setMessageText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,33 +27,44 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [messages]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const handleSend = () => {
     if (messageText.trim()) {
       onSendMessage(contact.phone_number, messageText);
-      setMessageText('');
+      setMessageText("");
     }
   };
 
   const formatMessageTime = (dateString: string | null) => {
-    if (!dateString) return '';
+    if (!dateString) return "";
     const date = new Date(dateString);
-    return date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString("uk-UA", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   const getStatusIcon = (status: MessageStatus) => {
     switch (status) {
       case MessageStatus.SENT:
-        return '✓';
+        return "✓";
       case MessageStatus.DELIVERED:
-        return '✓✓';
+        return "✓✓";
       case MessageStatus.READ:
-        return '✓✓';
+        return "✓✓";
       default:
-        return '';
+        return "";
     }
+  };
+
+  // Нова функція для визначення кольору статусу
+  const getStatusClass = (status: MessageStatus) => {
+    if (status === MessageStatus.READ) {
+      return "text-white font-bold"; // Білий та жирний для прочитаних
+    }
+    return "text-blue-300"; // Тьмяний (сіруватий) для доставлених/відправлених
   };
 
   return (
@@ -92,31 +108,35 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         ) : (
           <div className="space-y-4">
             {messages.map((message, index) => {
-              const isOutbound = message.direction === MessageDirection.OUTBOUND;
+              const isOutbound =
+                message.direction === MessageDirection.OUTBOUND;
               return (
                 <div
                   key={message.id || `message-${index}`}
-                  className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                       isOutbound
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white text-gray-900 border border-gray-200'
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-900 border border-gray-200"
                     }`}
                   >
                     {message.body && <p className="text-sm">{message.body}</p>}
                     {message.media_files && message.media_files.length > 0 && (
                       <div className="mt-2 space-y-2">
                         {message.media_files.map((media) => (
-                          <div key={media.id} className="rounded overflow-hidden">
-                            {media.file_mime_type.startsWith('image/') ? (
+                          <div
+                            key={media.id}
+                            className="rounded overflow-hidden"
+                          >
+                            {media.file_mime_type.startsWith("image/") ? (
                               <img
                                 src={media.url}
                                 alt={media.caption || media.file_name}
                                 className="max-w-full h-auto"
                               />
-                            ) : media.file_mime_type.startsWith('video/') ? (
+                            ) : media.file_mime_type.startsWith("video/") ? (
                               <video
                                 src={media.url}
                                 controls
@@ -136,7 +156,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                               </a>
                             )}
                             {media.caption && (
-                              <p className="text-xs mt-1 opacity-90">{media.caption}</p>
+                              <p className="text-xs mt-1 opacity-90">
+                                {media.caption}
+                              </p>
                             )}
                           </div>
                         ))}
@@ -144,12 +166,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     )}
                     <div
                       className={`flex items-center justify-end gap-2 mt-1 text-xs ${
-                        isOutbound ? 'text-blue-100' : 'text-gray-500'
+                        isOutbound ? "text-blue-100" : "text-gray-500"
                       }`}
                     >
                       <span>{formatMessageTime(message.created_at)}</span>
                       {isOutbound && (
-                        <span className="text-xs">{getStatusIcon(message.status)}</span>
+                        /* Оновлено тут: додано виклик getStatusClass */
+                        <span
+                          className={`text-xs ${getStatusClass(message.status)}`}
+                        >
+                          {getStatusIcon(message.status)}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -168,7 +195,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             type="text"
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            onKeyPress={(e) => e.key === "Enter" && handleSend()}
             placeholder="Введіть повідомлення..."
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
@@ -186,4 +213,3 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 };
 
 export default ChatWindow;
-
