@@ -1,10 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from loguru import logger
-
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from src.core.websocket import manager
-from src.schemas import WhatsAppMessage
+from src.schemas import MessageCreate, MessageSendResponse, WhatsAppMessage
 from src.worker import handle_messages_task
 
 router = APIRouter(tags=["Messages"])
@@ -20,23 +18,33 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-@router.post("/send_message/{phone}")
-async def send_message(
-    request: Request,
-    phone: str,
-    type: str = "text",
-    text: str = "This is a test message from the API.",
-):
+@router.post(
+    "/messages",
+    response_model=MessageSendResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def send_message(data: MessageCreate):
+    """
+    Send a WhatsApp message asynchronously.
+
+    - **text**: Send regular text message
+    - **template**: Send template message (template_id required)
+    """
     request_id = str(uuid.uuid4())
 
+    message_body = data.body
+    if data.type == "template" and data.template_id:
+        message_body = str(data.template_id)
+
     message_obj = WhatsAppMessage(
-        phone_number=phone, type=type, body=text, request_id=request_id
+        phone_number=data.phone_number,
+        type=data.type,
+        body=message_body,
+        request_id=request_id,
     )
 
-    try:
-        await handle_messages_task.kiq(message_obj)
-    except Exception as e:
-        logger.error(f"Failed to publish to Redis: {e}")
-        return {"status": "error", "detail": "Internal Broker Error"}
+    await handle_messages_task.kiq(message_obj)
 
-    return {"status": "sent", "request_id": request_id}
+    return MessageSendResponse(
+        status="queued", message_id=uuid.uuid4(), request_id=request_id
+    )

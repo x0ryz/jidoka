@@ -4,8 +4,6 @@ from uuid import UUID
 import httpx
 from aiolimiter import AsyncLimiter
 from redis import asyncio as aioredis
-from taskiq import Context, TaskiqDepends
-
 from src.clients.meta import MetaClient
 from src.core.broker import broker
 from src.core.config import settings
@@ -15,9 +13,11 @@ from src.core.uow import UnitOfWork
 from src.models import WebhookLog, get_utc_now
 from src.schemas import WabaSyncRequest, WebhookEvent, WhatsAppMessage
 from src.services.campaign import CampaignSenderService
+from src.services.storage import StorageService
 from src.services.sync import SyncService
-from src.services.websocket import BatchProgressEvent
-from src.services.whatsapp import WhatsAppService
+from src.services.websocket import BatchProgressEvent, CampaignStatusEvent
+from src.services.whatsapp import WhatsAppMessagingService, WhatsAppService
+from taskiq import Context, TaskiqDepends
 
 logger = setup_logging()
 
@@ -47,6 +47,7 @@ async def handle_messages_task(
     with logger.contextualize(request_id=message.request_id):
         uow = UnitOfWork(async_session_maker)
         meta_client = MetaClient(client)
+        # WhatsAppService всередині створює StorageService та MessagingService
         service = WhatsAppService(uow, meta_client, notifier=publish_ws_update)
         await service.send_outbound_message(message)
 
@@ -94,19 +95,21 @@ async def process_campaign_batch_task(
 ):
     """
     Process a batch of contacts with detailed progress tracking.
-
-    Sends WebSocket notifications:
-    - When batch starts
-    - Progress within batch (every N messages)
-    - When batch completes
-    - Aggregate campaign progress
     """
     BATCH_SIZE = 100
     PROGRESS_UPDATE_INTERVAL = 10
 
     uow = UnitOfWork(async_session_maker)
     meta_client = MetaClient(client)
-    sender = CampaignSenderService(uow, meta_client, notifier=publish_ws_update)
+
+    # 1. Ініціалізуємо базові сервіси
+    storage_service = StorageService()
+    messaging_service = WhatsAppMessagingService(
+        uow, meta_client, storage_service, notifier=publish_ws_update
+    )
+
+    # 2. Ін'єктуємо MessagingService в CampaignSenderService
+    sender = CampaignSenderService(uow, messaging_service, notifier=publish_ws_update)
 
     # Get contacts for this batch
     async with uow:
@@ -144,6 +147,7 @@ async def process_campaign_batch_task(
     for idx, link in enumerate(contacts, start=1):
         async with limiter:
             try:
+                # Використовуємо уніфіковану логіку відправки
                 await sender.send_single_message(
                     campaign_id=UUID(campaign_id),
                     link_id=link.id,
@@ -186,7 +190,17 @@ async def handle_campaign_start_task(
         try:
             uow = UnitOfWork(async_session_maker)
             meta_client = MetaClient(client)
-            sender = CampaignSenderService(uow, meta_client, notifier=publish_ws_update)
+
+            # Ініціалізація залежностей
+            storage_service = StorageService()
+            messaging_service = WhatsAppMessagingService(
+                uow, meta_client, storage_service, notifier=publish_ws_update
+            )
+
+            # Створення сендера з залежностями
+            sender = CampaignSenderService(
+                uow, messaging_service, notifier=publish_ws_update
+            )
 
             await sender.start_campaign(UUID(campaign_id))
 
@@ -195,9 +209,6 @@ async def handle_campaign_start_task(
 
         except Exception as e:
             logger.exception(f"Campaign {campaign_id} failed to start")
-
-            # Notify failure
-            from src.services.websocket import CampaignStatusEvent
 
             event = CampaignStatusEvent(
                 campaign_id=UUID(campaign_id), status="FAILED", error=str(e)
@@ -215,7 +226,16 @@ async def handle_campaign_resume_task(
         try:
             uow = UnitOfWork(async_session_maker)
             meta_client = MetaClient(client)
-            sender = CampaignSenderService(uow, meta_client, notifier=publish_ws_update)
+
+            # Ініціалізація залежностей
+            storage_service = StorageService()
+            messaging_service = WhatsAppMessagingService(
+                uow, meta_client, storage_service, notifier=publish_ws_update
+            )
+
+            sender = CampaignSenderService(
+                uow, messaging_service, notifier=publish_ws_update
+            )
 
             await sender.resume_campaign(UUID(campaign_id))
 

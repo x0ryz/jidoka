@@ -1,23 +1,16 @@
-# src/services/campaign/sender_enhanced.py
-"""
-Enhanced Campaign Sender with comprehensive WebSocket event notifications.
-"""
+# src/services/campaign/sender.py
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from typing import Awaitable, Callable, Optional
 from uuid import UUID
 
 from loguru import logger
-
-from src.clients.meta import MetaClient
 from src.core.uow import UnitOfWork
 from src.models import (
     Campaign,
     CampaignStatus,
     Contact,
     ContactStatus,
-    MessageDirection,
-    MessageStatus,
     get_utc_now,
 )
 from src.services.websocket import (
@@ -26,29 +19,18 @@ from src.services.websocket import (
     CampaignStatusEvent,
     MessageStatusEvent,
 )
+from src.services.whatsapp.messaging import WhatsAppMessagingService
 
 
 class CampaignSenderService:
-    """
-    Campaign sender with rich real-time event notifications.
-
-    Sends WebSocket updates for:
-    - Campaign status changes
-    - Progress updates with detailed stats
-    - Batch processing progress
-    - Individual message status
-    - Rate limiting info
-    - Error notifications
-    """
-
     def __init__(
         self,
         uow: UnitOfWork,
-        meta_client: MetaClient,
+        messaging_service: WhatsAppMessagingService,  # ЗМІНЕНО: Приймаємо сервіс
         notifier: Optional[Callable[[dict], Awaitable[None]]] = None,
     ):
         self.uow = uow
-        self.meta_client = meta_client
+        self.messaging_service = messaging_service  # ЗМІНЕНО: Зберігаємо сервіс
         self.notifier = notifier
 
         # Track batch statistics
@@ -112,10 +94,11 @@ class CampaignSenderService:
         self, campaign_id: UUID, link_id: UUID, contact_id: UUID
     ):
         """
-        Send message with detailed status notifications.
+        Send message using WhatsAppMessagingService.
         """
         try:
             async with self.uow:
+                # 1. Отримуємо дані
                 campaign = await self.uow.campaigns.get_by_id_with_template(campaign_id)
                 contact_link = await self.uow.campaign_contacts.get_by_id(link_id)
                 contact = await self.uow.contacts.get_by_id(contact_id)
@@ -134,93 +117,72 @@ class CampaignSenderService:
                     logger.warning(f"Contact {contact_id} already sent")
                     return
 
-                waba_phone = await self.uow.waba.get_default_phone()
-                if not waba_phone:
-                    await self._mark_as_failed(
-                        contact_link, campaign, "No WABA phone available"
-                    )
-                    return
-
+                # 2. Підготовка параметрів
+                template_name = None
                 body_text = campaign.message_body
-                if campaign.message_type == "template" and campaign.template:
-                    body_text = campaign.template.name
 
-                message = await self.uow.messages.create(
-                    auto_flush=True,
-                    waba_phone_id=waba_phone.id,
-                    contact_id=contact.id,
-                    direction=MessageDirection.OUTBOUND,
-                    status=MessageStatus.PENDING,
+                if campaign.message_type == "template" and campaign.template:
+                    template_name = campaign.template.name
+                    body_text = template_name  # Для логування
+
+                # 3. Делегуємо відправку в MessagingService
+                # Він створить Message, відправить в Meta і оновить його статус
+                message = await self.messaging_service.send_message(
+                    contact=contact,
                     message_type=campaign.message_type,
                     body=body_text,
                     template_id=campaign.template_id,
+                    template_name=template_name,
+                    is_campaign=True,  # Важливо: не спамити WS подіями "new_message"
                 )
 
-                payload = self._build_whatsapp_payload(campaign, contact)
+                # 4. Оновлюємо статистику Кампанії
+                now = get_utc_now()
 
-                # Send via Meta API
-                result = await self.meta_client.send_message(
-                    waba_phone.phone_number_id, payload
+                # Link update
+                contact_link.status = ContactStatus.SENT
+                contact_link.message_id = message.id
+                contact_link.updated_at = now
+                self.uow.session.add(contact_link)
+
+                # Contact update
+                contact.last_message_at = now
+                contact.status = ContactStatus.SENT
+                contact.updated_at = now
+                self.uow.session.add(contact)
+
+                # Campaign stats update
+                campaign.sent_count += 1
+                campaign.updated_at = now
+                self.uow.session.add(campaign)
+
+                await self.uow.commit()
+
+                logger.info(
+                    f"✓ Campaign msg sent to {contact.phone_number}, WAMID: {message.wamid}"
                 )
 
-                wamid = result.get("messages", [{}])[0].get("id")
+                # 5. Нотифікації кампанії
+                # Оновлюємо локальну статистику пакету для прогрес-бару
+                if str(campaign_id) in self.batch_stats:
+                    self.batch_stats[str(campaign_id)]["total_sent"] += 1
 
-                if wamid:
-                    now = get_utc_now()
-
-                    # Update message
-                    message.wamid = wamid
-                    message.status = MessageStatus.SENT
-                    self.uow.session.add(message)
-
-                    # Update campaign contact
-                    contact_link.status = ContactStatus.SENT
-                    contact_link.message_id = message.id
-                    contact_link.updated_at = now
-                    self.uow.session.add(contact_link)
-
-                    # Update contact
-                    contact.last_message_at = now
-                    contact.status = ContactStatus.SENT
-                    contact.updated_at = now
-                    self.uow.session.add(contact)
-
-                    # Update campaign stats
-                    campaign.sent_count += 1
-                    campaign.updated_at = now
-                    self.uow.session.add(campaign)
-
-                    await self.uow.commit()
-
-                    logger.info(
-                        f"✓ Message sent to {contact.phone_number}, WAMID: {wamid}"
+                await self._notify_event(
+                    MessageStatusEvent(
+                        message_id=message.id,
+                        wamid=message.wamid,
+                        status="sent",
+                        campaign_id=str(campaign.id),
+                        contact_id=str(contact.id),
+                        phone=contact.phone_number,
+                        contact_name=contact.name,
                     )
+                )
 
-                    # Notify message sent
-                    await self._notify_event(
-                        MessageStatusEvent(
-                            message_id=message.id,
-                            wamid=wamid,
-                            status="sent",
-                            campaign_id=str(campaign.id),
-                            contact_id=str(contact.id),
-                            phone=contact.phone_number,
-                            contact_name=contact.name,
-                        )
-                    )
-
-                    # Update batch stats
-                    if str(campaign_id) in self.batch_stats:
-                        self.batch_stats[str(campaign_id)]["total_sent"] += 1
-
-                    # Progress update (every message for real-time feel)
-                    await self._notify_progress(campaign)
-
-                else:
-                    raise Exception("No WAMID in Meta response")
+                await self._notify_progress(campaign)
 
         except Exception as e:
-            logger.exception(f"Failed to send to contact {contact_id}")
+            logger.exception(f"Failed to send campaign message to {contact_id}")
 
             async with self.uow:
                 contact_link = await self.uow.campaign_contacts.get_by_id(link_id)
@@ -261,29 +223,6 @@ class CampaignSenderService:
             )
         )
 
-    def _build_whatsapp_payload(self, campaign: Campaign, contact: Contact) -> dict:
-        """Build Meta API payload"""
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": contact.phone_number,
-            "type": campaign.message_type,
-        }
-
-        if campaign.message_type == "text":
-            payload["text"] = {"body": campaign.message_body}
-
-        elif campaign.message_type == "template":
-            if not campaign.template:
-                raise ValueError("Template not found for campaign")
-
-            payload["template"] = {
-                "name": campaign.template.name,
-                "language": {"code": campaign.template.language},
-            }
-
-        return payload
-
     async def _notify_progress(self, campaign: Campaign):
         """Send detailed progress notification"""
         progress = 0.0
@@ -304,7 +243,7 @@ class CampaignSenderService:
                 if current_rate > 0:
                     eta_seconds = remaining / (current_rate / 60)
                     estimated_completion = (
-                        get_utc_now() + datetime.timedelta(seconds=eta_seconds)
+                        get_utc_now() + timedelta(seconds=eta_seconds)
                     ).isoformat()
 
         pending = campaign.total_contacts - campaign.sent_count - campaign.failed_count

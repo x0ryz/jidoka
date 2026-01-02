@@ -1,41 +1,41 @@
 // Enums
 export enum ContactStatus {
-  NEW = 'new',
-  SCHEDULED = 'scheduled',
-  SENT = 'sent',
-  DELIVERED = 'delivered',
-  READ = 'read',
-  FAILED = 'failed',
-  OPTED_OUT = 'opted_out',
-  BLOCKED = 'blocked',
+  NEW = "new",
+  SCHEDULED = "scheduled",
+  SENT = "sent",
+  DELIVERED = "delivered",
+  READ = "read",
+  FAILED = "failed",
+  OPTED_OUT = "opted_out",
+  BLOCKED = "blocked",
 }
 
 export enum CampaignStatus {
-  DRAFT = 'draft',
-  SCHEDULED = 'scheduled',
-  RUNNING = 'running',
-  PAUSED = 'paused',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
+  DRAFT = "draft",
+  SCHEDULED = "scheduled",
+  RUNNING = "running",
+  PAUSED = "paused",
+  COMPLETED = "completed",
+  FAILED = "failed",
 }
 
 export enum MessageStatus {
-  PENDING = 'pending',
-  SENT = 'sent',
-  DELIVERED = 'delivered',
-  READ = 'read',
-  FAILED = 'failed',
-  RECEIVED = 'received',
+  PENDING = "pending",
+  SENT = "sent",
+  DELIVERED = "delivered",
+  READ = "read",
+  FAILED = "failed",
+  RECEIVED = "received",
 }
 
 export enum MessageDirection {
-  INBOUND = 'inbound',
-  OUTBOUND = 'outbound',
+  INBOUND = "inbound",
+  OUTBOUND = "outbound",
 }
 
 export enum MessageType {
-  TEXT = 'text',
-  TEMPLATE = 'template',
+  TEXT = "text",
+  TEMPLATE = "template",
 }
 
 // Contact Types
@@ -222,11 +222,12 @@ export interface SendMessageParams {
   phone: string;
   type?: string;
   text?: string;
+  body?: string;
+  template_id?: string;
 }
 
 export interface WebhookVerifyParams {
-  'hub.mode': string;
-  'hub.verify_token': string;
-  'hub.challenge': string;
+  "hub.mode": string;
+  "hub.verify_token": string;
+  "hub.challenge": string;
 }
-

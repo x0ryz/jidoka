@@ -1,5 +1,5 @@
 from sqlalchemy.orm import selectinload
-from sqlmodel import select
+from sqlmodel import desc, select
 from src.models import MediaFile, Message, MessageStatus
 from src.repositories.base import BaseRepository
 
@@ -38,6 +38,21 @@ class MessageRepository(BaseRepository[Message]):
             message.status = status
             self.session.add(message)
         return message
+
+    async def get_chat_history(
+        self, contact_id: str, limit: int, offset: int
+    ) -> list[Message]:
+        """Receives message history with contact, including media files."""
+        stmt = (
+            select(Message)
+            .where(Message.contact_id == contact_id)
+            .options(selectinload(Message.media_files))
+            .order_by(desc(Message.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+
+        return (await self.session.exec(stmt)).all()
 
     def mark_as_sent(self, message: Message, wamid: str):
         message.wamid = wamid

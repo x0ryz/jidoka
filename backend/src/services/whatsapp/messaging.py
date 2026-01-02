@@ -6,7 +6,7 @@ from loguru import logger
 from src.clients.meta import MetaClient
 from src.core.config import settings
 from src.core.uow import UnitOfWork
-from src.models import Message, MessageDirection, MessageStatus
+from src.models import Contact, Message, MessageDirection, MessageStatus
 from src.schemas import MetaMedia, MetaMessage, WhatsAppMessage
 from src.services.storage import StorageService
 
@@ -31,87 +31,144 @@ class WhatsAppMessagingService:
 
     # --- Outbound Logic (Send) ---
 
+    async def send_message(
+        self,
+        contact: Contact,
+        message_type: str,
+        body: str,
+        template_id: uuid.UUID | None = None,
+        template_name: str | None = None,
+        is_campaign: bool = False,
+    ) -> Message:
+        """
+        Універсальний метод відправки повідомлення.
+        Використовується і для одиночних повідомлень, і для кампаній.
+        """
+        waba_phone = await self.uow.waba.get_default_phone()
+        if not waba_phone:
+            raise ValueError("No WABA Phone numbers found in DB.")
+
+        # 1. Створення запису в БД (PENDING)
+        db_message = await self.uow.messages.create(
+            auto_flush=True,
+            waba_phone_id=waba_phone.id,
+            contact_id=contact.id,
+            direction=MessageDirection.OUTBOUND,
+            status=MessageStatus.PENDING,
+            message_type=message_type,
+            body=body if message_type == "text" else template_name,
+            template_id=template_id,
+        )
+
+        # Сповіщення про створення (тільки якщо це не масова розсилка, щоб не спамити WS)
+        if not is_campaign:
+            await self._notify(
+                "new_message", self._serialize_message(db_message, contact.phone_number)
+            )
+
+        try:
+            # 2. Підготовка Payload
+            payload = self._build_payload(
+                to_phone=contact.phone_number,
+                message_type=message_type,
+                body=body,
+                template_name=template_name,
+            )
+
+            # 3. Відправка через Meta API
+            result = await self.meta_client.send_message(
+                waba_phone.phone_number_id, payload
+            )
+            wamid = result.get("messages", [{}])[0].get("id")
+
+            if not wamid:
+                raise Exception("No WAMID in Meta response")
+
+            # 4. Оновлення статусу на SENT
+            self.uow.messages.mark_as_sent(db_message, wamid)
+
+            # Важливо: ми комітимо зміни повідомлення тут,
+            # але CampaignService може мати свою зовнішню транзакцію.
+            # Якщо `auto_flush=True` у create, об'єкт вже прив'язаний до сесії.
+            await self.uow.session.flush()
+
+            logger.info(f"Message sent to {contact.phone_number}. WAMID: {wamid}")
+
+            if not is_campaign:
+                await self._notify(
+                    "status_update",
+                    {
+                        "id": str(db_message.id),
+                        "wamid": wamid,
+                        "old_status": "pending",
+                        "new_status": "sent",
+                        "phone": contact.phone_number,
+                    },
+                )
+
+            return db_message
+
+        except Exception as e:
+            logger.error(f"Failed to send message to {contact.phone_number}: {e}")
+            self.uow.messages.mark_as_failed(db_message)
+            await self.uow.session.flush()
+            # Прокидаємо помилку далі, щоб CampaignService міг її обробити
+            raise e
+
     async def send_outbound_message(self, message: WhatsAppMessage):
-        """Відправка вихідного повідомлення через Meta API."""
+        """Обгортка для воркера (одиночні повідомлення з API)."""
         async with self.uow:
             contact = await self.uow.contacts.get_or_create(message.phone_number)
-            waba_phone = await self.uow.waba.get_default_phone()
 
-            if not waba_phone:
-                logger.error("No WABA Phone numbers found in DB.")
-                return
-
-            # Обробка шаблонів
+            # Логіка резолвінгу шаблону
             template_db_id = None
             template_real_name = None
 
             if message.type == "template":
-                requested_template_id = message.body
-                template_obj = await self.uow.templates.get_active_by_id(
-                    requested_template_id
-                )
-
-                if not template_obj:
-                    logger.error(f"Template {requested_template_id} not found/active")
+                template_obj = await self.uow.templates.get_active_by_id(message.body)
+                if template_obj:
+                    template_db_id = template_obj.id
+                    template_real_name = template_obj.name
+                else:
+                    logger.error(f"Template {message.body} not found")
                     return
 
-                template_db_id = template_obj.id
-                template_real_name = template_obj.name
-
-            body_to_save = (
-                template_real_name if message.type == "template" else message.body
-            )
-
-            # Створення повідомлення в БД
-            db_message = await self.uow.messages.create(
-                auto_flush=True,
-                waba_phone_id=waba_phone.id,
-                contact_id=contact.id,
-                direction=MessageDirection.OUTBOUND,
-                status=MessageStatus.PENDING,
-                message_type=message.type,
-                body=body_to_save,
-                template_id=template_db_id,
-            )
-
-            await self._notify(
-                "new_message", self._serialize_message(db_message, message.phone_number)
-            )
-
             try:
-                # Підготовка payload для Meta
-                payload = self._build_meta_payload(
-                    message, contact.phone_number, template_real_name
+                await self.send_message(
+                    contact=contact,
+                    message_type=message.type,
+                    body=message.body,
+                    template_id=template_db_id,
+                    template_name=template_real_name,
+                    is_campaign=False,
                 )
-
-                # Відправка
-                result = await self.meta_client.send_message(
-                    waba_phone.phone_number_id, payload
-                )
-                wamid = result.get("messages", [{}])[0].get("id")
-
-                if wamid:
-                    self.uow.messages.mark_as_sent(db_message, wamid)
-                    await self.uow.commit()
-
-                    await self._notify(
-                        "status_update",
-                        {
-                            "id": str(db_message.id),
-                            "wamid": wamid,
-                            "old_status": "pending",
-                            "new_status": "sent",
-                            "phone": message.phone_number,
-                        },
-                    )
-                    logger.success(
-                        f"Message sent to {message.phone_number}. WAMID: {wamid}"
-                    )
-
-            except Exception as e:
-                logger.exception(f"Failed to send message to {message.phone_number}")
-                self.uow.messages.mark_as_failed(db_message)
                 await self.uow.commit()
+            except Exception:
+                # Помилка вже залогована в send_message, просто комітимо статус FAILED
+                await self.uow.commit()
+
+    # --- Helpers ---
+
+    def _build_payload(
+        self, to_phone: str, message_type: str, body: str, template_name: str | None
+    ) -> dict:
+        """Єдине місце формування JSON для Meta"""
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone,
+            "type": message_type,
+        }
+        if message_type == "text":
+            payload["text"] = {"body": body}
+        elif message_type == "template":
+            if not template_name:
+                raise ValueError("Template name is required for template messages")
+            payload["template"] = {
+                "name": template_name,
+                "language": {"code": "en_US"},  # Тут можна додати параметризацію мови
+            }
+        return payload
 
     # --- Inbound Logic (Process & Save Media) ---
 

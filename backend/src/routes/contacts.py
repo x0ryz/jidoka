@@ -1,36 +1,25 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel
-from sqlalchemy.orm import selectinload
 from sqlmodel import desc, or_, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.database import get_session
 from src.core.exceptions import BadRequestError, NotFoundError
 from src.core.uow import UnitOfWork
-from src.models import Contact, Message, get_utc_now
-from src.schemas import MediaFileResponse, MessageResponse
-from src.services.storage import StorageService
+from src.models import Contact, get_utc_now
+from src.schemas import MessageResponse
+from src.schemas.contacts import (
+    ContactCreate,
+    ContactListResponse,
+    ContactResponse,
+    ContactUpdate,
+)
+from src.services.chat import ChatService
 
 router = APIRouter(tags=["Contacts"])
 
 
-class ContactUpdate(BaseModel):
-    """Schema for updating contact"""
-
-    name: str | None = None
-    tags: list[str] | None = None
-
-
-class ContactCreate(BaseModel):
-    """Schema for creating contact"""
-
-    phone_number: str
-    name: str | None = None
-    tags: list[str] = []
-
-
-@router.get("/contacts", response_model=list[Contact])
+@router.get("/contacts", response_model=list[ContactListResponse])
 async def get_contacts(session: AsyncSession = Depends(get_session)):
     """Get all contacts sorted by unread count and last activity"""
     statement = select(Contact).order_by(
@@ -61,7 +50,9 @@ async def search_contacts(
     return contacts
 
 
-@router.post("/contacts", response_model=Contact, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/contacts", response_model=ContactResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_contact(
     data: ContactCreate, session: AsyncSession = Depends(get_session)
 ):
@@ -93,7 +84,7 @@ async def create_contact(
         return contact
 
 
-@router.get("/contacts/{contact_id}", response_model=Contact)
+@router.get("/contacts/{contact_id}", response_model=ContactResponse)
 async def get_contact(contact_id: UUID, session: AsyncSession = Depends(get_session)):
     """Get single contact by ID"""
     contact = await session.get(Contact, contact_id)
@@ -102,16 +93,11 @@ async def get_contact(contact_id: UUID, session: AsyncSession = Depends(get_sess
     return contact
 
 
-@router.patch("/contacts/{contact_id}", response_model=Contact)
+@router.patch("/contacts/{contact_id}", response_model=ContactResponse)
 async def update_contact(
     contact_id: UUID, data: ContactUpdate, session: AsyncSession = Depends(get_session)
 ):
-    """
-    Update contact details.
-
-    - **name**: Update contact name
-    - **tags**: Update contact tags
-    """
+    """Update contact details."""
     contact = await session.get(Contact, contact_id)
     if not contact:
         raise NotFoundError(detail="Contact not found")
@@ -175,58 +161,14 @@ async def get_chat_history(
 ):
     """
     Get chat history with a contact.
-
-    Automatically marks messages as read.
     """
-    contact = await session.get(Contact, contact_id)
-    if not contact:
+    uow = UnitOfWork(lambda: session)
+
+    chat_service = ChatService(uow)
+
+    messages = await chat_service.get_chat_history(contact_id, limit, offset)
+
+    if messages is None:
         raise NotFoundError(detail="Contact not found")
 
-    if contact.unread_count > 0:
-        contact.unread_count = 0
-        session.add(contact)
-        await session.commit()
-
-    statement = (
-        select(Message)
-        .where(Message.contact_id == contact_id)
-        .options(selectinload(Message.media_files))
-        .order_by(desc(Message.created_at))
-        .offset(offset)
-        .limit(limit)
-    )
-
-    result = await session.exec(statement)
-    messages = result.all()
-
-    storage = StorageService()
-    response_data = []
-
-    for msg in messages:
-        media_dtos = []
-        for mf in msg.media_files:
-            url = await storage.get_presigned_url(mf.r2_key)
-            media_dtos.append(
-                MediaFileResponse(
-                    id=mf.id,
-                    file_name=mf.file_name,
-                    file_mime_type=mf.file_mime_type,
-                    url=url,
-                    caption=mf.caption,
-                )
-            )
-
-        response_data.append(
-            MessageResponse(
-                id=msg.id,
-                wamid=msg.wamid,
-                direction=msg.direction,
-                status=msg.status,
-                message_type=msg.message_type,
-                body=msg.body,
-                created_at=msg.created_at,
-                media_files=media_dtos,
-            )
-        )
-
-    return list(reversed(response_data))
+    return messages

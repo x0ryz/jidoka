@@ -26,7 +26,7 @@ async def receive_webhook(request: Request):
     try:
         data = await request.json()
     except json.JSONDecodeError:
-        return BadRequestError(content="Invalid JSON")
+        raise BadRequestError(detail="Invalid JSON")
 
     event = WebhookEvent(payload=data)
 

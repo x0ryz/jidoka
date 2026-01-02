@@ -1,5 +1,5 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import { config } from '../config/env';
+import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
+import { config } from "../config/env";
 import {
   Contact,
   ContactCreate,
@@ -21,50 +21,53 @@ import {
   SearchContactsParams,
   SendMessageParams,
   WebhookVerifyParams,
-} from '../types';
+} from "../types";
 
 export class ApiClient {
   private client: AxiosInstance;
 
-  constructor(baseURL: string = 'https://dev.x0ryz.cc', config?: AxiosRequestConfig) {
+  constructor(
+    baseURL: string = "https://dev.x0ryz.cc",
+    config?: AxiosRequestConfig,
+  ) {
     this.client = axios.create({
       baseURL,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       ...config,
     });
 
     this.client.interceptors.response.use(
       (response) => response,
-      (error) => Promise.reject(error)
+      (error) => Promise.reject(error),
     );
   }
 
   // Webhooks
   async verifyWebhook(params: WebhookVerifyParams): Promise<any> {
-    const response = await this.client.get('/webhook', { params });
+    const response = await this.client.get("/webhook", { params });
     return response.data;
   }
 
   async receiveWebhook(data?: any): Promise<any> {
-    const response = await this.client.post('/webhook', data);
+    const response = await this.client.post("/webhook", data);
     return response.data;
   }
 
   // Contacts
   async getContacts(): Promise<Contact[]> {
-    const response = await this.client.get<Contact[]>('/contacts');
+    const response = await this.client.get<Contact[]>("/contacts");
     return response.data;
   }
 
   async createContact(data: ContactCreate): Promise<Contact> {
-    const response = await this.client.post<Contact>('/contacts', data);
+    const response = await this.client.post<Contact>("/contacts", data);
     return response.data;
   }
 
   async searchContacts(params: SearchContactsParams): Promise<any> {
-    const response = await this.client.get('/contacts/search', { params });
+    const response = await this.client.get("/contacts/search", { params });
     return response.data;
   }
 
@@ -73,8 +76,14 @@ export class ApiClient {
     return response.data;
   }
 
-  async updateContact(contactId: string, data: ContactUpdate): Promise<Contact> {
-    const response = await this.client.patch<Contact>(`/contacts/${contactId}`, data);
+  async updateContact(
+    contactId: string,
+    data: ContactUpdate,
+  ): Promise<Contact> {
+    const response = await this.client.patch<Contact>(
+      `/contacts/${contactId}`,
+      data,
+    );
     return response.data;
   }
 
@@ -83,53 +92,69 @@ export class ApiClient {
   }
 
   async markContactAsRead(contactId: string): Promise<Contact> {
-    const response = await this.client.post<Contact>(`/contacts/${contactId}/mark-read`);
+    const response = await this.client.post<Contact>(
+      `/contacts/${contactId}/mark-read`,
+    );
     return response.data;
   }
 
-  async getChatHistory(contactId: string, params?: PaginationParams): Promise<MessageResponse[]> {
+  async getChatHistory(
+    contactId: string,
+    params?: PaginationParams,
+  ): Promise<MessageResponse[]> {
     const response = await this.client.get<MessageResponse[]>(
       `/contacts/${contactId}/messages`,
-      { params }
+      { params },
     );
     return response.data;
   }
 
   // Messages
   async sendMessage(params: SendMessageParams): Promise<any> {
-    const { phone, ...queryParams } = params;
-    const response = await this.client.post(`/send_message/${phone}`, null, {
-      params: queryParams,
-    });
+    const payload = {
+      phone_number: params.phone,
+      body: params.text || params.body,
+      type: params.type || "text",
+      template_id: params.template_id,
+    };
+    const response = await this.client.post("/messages", payload);
     return response.data;
   }
 
   // WABA
   async triggerWabaSync(): Promise<any> {
-    const response = await this.client.post('/waba/sync');
+    const response = await this.client.post("/waba/sync");
     return response.data;
   }
 
   // Campaigns
   async listCampaigns(): Promise<CampaignResponse[]> {
-    const response = await this.client.get<CampaignResponse[]>('/campaigns');
+    const response = await this.client.get<CampaignResponse[]>("/campaigns");
     return response.data;
   }
 
   async createCampaign(data: CampaignCreate): Promise<CampaignResponse> {
-    const response = await this.client.post<CampaignResponse>('/campaigns', data);
+    const response = await this.client.post<CampaignResponse>(
+      "/campaigns",
+      data,
+    );
     return response.data;
   }
 
   async getCampaign(campaignId: string): Promise<CampaignResponse> {
-    const response = await this.client.get<CampaignResponse>(`/campaigns/${campaignId}`);
+    const response = await this.client.get<CampaignResponse>(
+      `/campaigns/${campaignId}`,
+    );
     return response.data;
   }
 
-  async updateCampaign(campaignId: string, data: CampaignUpdate): Promise<CampaignResponse> {
+  async updateCampaign(
+    campaignId: string,
+    data: CampaignUpdate,
+  ): Promise<CampaignResponse> {
     const response = await this.client.patch<CampaignResponse>(
       `/campaigns/${campaignId}`,
-      data
+      data,
     );
     return response.data;
   }
@@ -138,122 +163,140 @@ export class ApiClient {
     await this.client.delete(`/campaigns/${campaignId}`);
   }
 
-  async scheduleCampaign(campaignId: string, data: CampaignSchedule): Promise<CampaignResponse> {
+  async scheduleCampaign(
+    campaignId: string,
+    data: CampaignSchedule,
+  ): Promise<CampaignResponse> {
     const response = await this.client.post<CampaignResponse>(
       `/campaigns/${campaignId}/schedule`,
-      data
+      data,
     );
     return response.data;
   }
 
   async startCampaign(campaignId: string): Promise<CampaignResponse> {
-    const response = await this.client.post<CampaignResponse>(`/campaigns/${campaignId}/start`);
+    const response = await this.client.post<CampaignResponse>(
+      `/campaigns/${campaignId}/start`,
+    );
     return response.data;
   }
 
   async pauseCampaign(campaignId: string): Promise<CampaignResponse> {
-    const response = await this.client.post<CampaignResponse>(`/campaigns/${campaignId}/pause`);
+    const response = await this.client.post<CampaignResponse>(
+      `/campaigns/${campaignId}/pause`,
+    );
     return response.data;
   }
 
   async resumeCampaign(campaignId: string): Promise<CampaignResponse> {
-    const response = await this.client.post<CampaignResponse>(`/campaigns/${campaignId}/resume`);
+    const response = await this.client.post<CampaignResponse>(
+      `/campaigns/${campaignId}/resume`,
+    );
     return response.data;
   }
 
   async getCampaignStats(campaignId: string): Promise<CampaignStats> {
-    const response = await this.client.get<CampaignStats>(`/campaigns/${campaignId}/stats`);
+    const response = await this.client.get<CampaignStats>(
+      `/campaigns/${campaignId}/stats`,
+    );
     return response.data;
   }
 
   async getCampaignContacts(
     campaignId: string,
-    params?: PaginationParams
+    params?: PaginationParams,
   ): Promise<CampaignContactResponse[]> {
     const response = await this.client.get<CampaignContactResponse[]>(
       `/campaigns/${campaignId}/contacts`,
-      { params }
+      { params },
     );
     return response.data;
   }
 
   async addContactsManually(
     campaignId: string,
-    contacts: ContactImport[]
+    contacts: ContactImport[],
   ): Promise<ContactImportResult> {
     const response = await this.client.post<ContactImportResult>(
       `/campaigns/${campaignId}/contacts`,
-      contacts
+      contacts,
     );
     return response.data;
   }
 
   async importContactsFromFile(
     campaignId: string,
-    file: File
+    file: File,
   ): Promise<ContactImportResult> {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append("file", file);
     const response = await this.client.post<ContactImportResult>(
       `/campaigns/${campaignId}/contacts/import`,
       formData,
       {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          "Content-Type": "multipart/form-data",
         },
-      }
+      },
     );
     return response.data;
   }
 
   // Templates
   async listTemplates(): Promise<Template[]> {
-    const response = await this.client.get<Template[]>('/templates');
+    const response = await this.client.get<Template[]>("/templates");
     return response.data;
   }
 
   async getTemplate(templateId: string): Promise<Template> {
-    const response = await this.client.get<Template>(`/templates/${templateId}`);
+    const response = await this.client.get<Template>(
+      `/templates/${templateId}`,
+    );
     return response.data;
   }
 
   async getTemplatesByStatus(statusFilter: string): Promise<any> {
-    const response = await this.client.get(`/templates/by-status/${statusFilter}`);
+    const response = await this.client.get(
+      `/templates/by-status/${statusFilter}`,
+    );
     return response.data;
   }
 
   // Dashboard
   async getDashboardStats(): Promise<DashboardStats> {
-    const response = await this.client.get<DashboardStats>('/dashboard/stats');
+    const response = await this.client.get<DashboardStats>("/dashboard/stats");
     return response.data;
   }
 
   async getRecentActivity(limit?: number): Promise<RecentActivity> {
-    const response = await this.client.get<RecentActivity>('/dashboard/recent-activity', {
-      params: { limit },
-    });
+    const response = await this.client.get<RecentActivity>(
+      "/dashboard/recent-activity",
+      {
+        params: { limit },
+      },
+    );
     return response.data;
   }
 
   async getMessagesTimeline(days?: number): Promise<MessagesTimeline> {
     const response = await this.client.get<MessagesTimeline>(
-      '/dashboard/charts/messages-timeline',
+      "/dashboard/charts/messages-timeline",
       {
         params: { days },
-      }
+      },
     );
     return response.data;
   }
 
   setAuthToken(token: string): void {
-    this.client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    import('../services/websocket').then(({ wsService }) => {
+    this.client.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    import("../services/websocket").then(({ wsService }) => {
       wsService.setAuthToken(token);
     });
   }
 
   removeAuthToken(): void {
-    delete this.client.defaults.headers.common['Authorization'];
+    delete this.client.defaults.headers.common["Authorization"];
   }
 
   getAxiosInstance(): AxiosInstance {
@@ -264,4 +307,3 @@ export class ApiClient {
 export const apiClient = new ApiClient(config.apiUrl);
 
 export default apiClient;
-
