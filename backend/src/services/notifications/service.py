@@ -1,0 +1,74 @@
+import json
+from uuid import UUID
+
+from loguru import logger
+from redis import asyncio as aioredis
+from src.core.config import settings
+from src.models import Message
+from src.schemas.events import (
+    BatchProgressEvent,
+    CampaignProgressEvent,
+    CampaignStatusEvent,
+    IncomingMessageEvent,
+    MessageStatusEvent,
+)
+
+
+class NotificationService:
+    def __init__(self):
+        self.redis_url = settings.REDIS_URL
+
+    async def _publish(self, event_data: dict):
+        """Low-level publish to Redis"""
+        try:
+            redis = aioredis.from_url(self.redis_url)
+            message_json = json.dumps(event_data, default=str)
+            await redis.publish("ws_updates", message_json)
+            await redis.close()
+        except Exception as e:
+            logger.error(f"Failed to publish WS update: {e}")
+
+    async def notify_new_message(
+        self, message: Message, media_files: list[dict] = None, phone: str = None
+    ):
+        contact_phone = phone
+        if not contact_phone and message.contact:
+            contact_phone = message.contact.phone_number
+
+        event = IncomingMessageEvent(
+            message_id=message.id,
+            contact_id=message.contact_id,
+            phone=contact_phone,
+            type=message.message_type,
+            body=message.body,
+            wamid=message.wamid,
+            media_files=media_files or [],
+            created_at=message.created_at,
+            direction=message.direction,
+            status=message.status,
+        )
+        await self._publish(event.to_dict())
+
+    async def notify_message_status(
+        self, message_id: UUID, wamid: str, status: str, **kwargs
+    ):
+        event = MessageStatusEvent(
+            message_id=message_id, wamid=wamid, status=status, **kwargs
+        )
+        await self._publish(event.to_dict())
+
+    async def notify_campaign_progress(self, campaign_id: UUID, stats: dict):
+        event = CampaignProgressEvent(campaign_id=campaign_id, **stats)
+        await self._publish(event.to_dict())
+
+    async def notify_campaign_status(self, campaign_id: UUID, status: str, **kwargs):
+        event = CampaignStatusEvent(campaign_id=campaign_id, status=status, **kwargs)
+        await self._publish(event.to_dict())
+
+    async def notify_batch_progress(
+        self, campaign_id: UUID, batch_number: int, stats: dict
+    ):
+        event = BatchProgressEvent(
+            campaign_id=campaign_id, batch_number=batch_number, **stats
+        )
+        await self._publish(event.to_dict())

@@ -2,8 +2,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from loguru import logger
-from sqlmodel.ext.asyncio.session import AsyncSession
-from src.core.database import get_session
 from src.core.dependencies import get_uow
 from src.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError
 from src.core.uow import UnitOfWork

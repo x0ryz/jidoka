@@ -12,7 +12,8 @@ from src.schemas.contacts import (
     ContactResponse,
     ContactUpdate,
 )
-from src.services.chat import ChatService
+from src.services.media.storage import StorageService
+from src.services.messaging.chat import ChatService
 
 router = APIRouter(tags=["Contacts"])
 
@@ -113,12 +114,8 @@ async def get_chat_history(
     uow: UnitOfWork = Depends(get_uow),
 ):
     """Get chat history with a contact."""
-
-    chat_service = ChatService(uow)
+    storage = StorageService()
+    chat_service = ChatService(uow, storage)
 
     messages = await chat_service.get_chat_history(contact_id, limit, offset)
-
-    if messages is None:
-        raise NotFoundError(detail="Contact not found")
-
     return messages

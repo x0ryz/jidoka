@@ -1,12 +1,10 @@
 import csv
 import io
 import re
-from typing import BinaryIO
 from uuid import UUID
 
 import openpyxl
 from loguru import logger
-
 from src.core.uow import UnitOfWork
 from src.models import CampaignContact, Contact, get_utc_now
 from src.schemas import ContactImport, ContactImportResult

@@ -1,12 +1,6 @@
-# src/services/websocket_events.py
-"""
-Centralized WebSocket event definitions and utilities.
-Provides type-safe event publishing with consistent schema.
-"""
-
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -32,7 +26,7 @@ class EventType(str, Enum):
     MESSAGE_DELIVERED = "message_delivered"
     MESSAGE_READ = "message_read"
     MESSAGE_FAILED = "message_failed"
-    MESSAGE_RECEIVED = "message_received"
+    MESSAGE_RECEIVED = "new_message"
 
     # Contact events
     CONTACT_CREATED = "contact_created"
@@ -93,7 +87,7 @@ class CampaignProgressEvent(WSEvent):
                 "pending": stats.get("pending", 0),
                 "progress_percent": stats.get("progress_percent", 0),
                 "estimated_completion": stats.get("estimated_completion"),
-                "current_rate": stats.get("current_rate", 0),  # messages/min
+                "current_rate": stats.get("current_rate", 0),
             },
         )
 
@@ -147,12 +141,16 @@ class MessageStatusEvent(WSEvent):
             "failed": EventType.MESSAGE_FAILED,
         }
 
+        # Frontend prefers STATUS_UPDATE for most logic
+        event_type = event_map.get(status, EventType.STATUS_UPDATE)
+
         super().__init__(
-            event=event_map.get(status, EventType.STATUS_UPDATE),
+            event=event_type,
             data={
                 "message_id": str(message_id),
                 "wamid": wamid,
                 "status": status,
+                "new_status": status,  # Frontend compatibility
                 **extra,
             },
         )
@@ -161,12 +159,17 @@ class MessageStatusEvent(WSEvent):
 class IncomingMessageEvent(WSEvent):
     """New incoming message from contact"""
 
-    def __init__(self, message_id: UUID, contact_id: UUID, **message_data):
+    def __init__(
+        self, message_id: UUID, contact_id: UUID, phone: str = None, **message_data
+    ):
         super().__init__(
             event=EventType.MESSAGE_RECEIVED,
             data={
+                "id": str(message_id),
                 "message_id": str(message_id),
                 "contact_id": str(contact_id),
+                "phone": phone,
+                "phone_number": phone,
                 **message_data,
             },
         )
@@ -206,9 +209,6 @@ class SyncStatusEvent(WSEvent):
             event=event_map.get(status, EventType.SYNC_STARTED),
             data={"status": status, **details},
         )
-
-
-# Helper function for backward compatibility
 
 
 def create_legacy_event(event_type: str, data: dict) -> dict:
