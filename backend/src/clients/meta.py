@@ -1,12 +1,11 @@
 import httpx
+from src.core.config import settings
 from tenacity import (
     retry,
     retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
-
-from src.core.config import settings
 
 
 def is_transient_error(exception):

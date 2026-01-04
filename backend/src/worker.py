@@ -31,19 +31,22 @@ async def get_http_client(context: Context = TaskiqDepends()) -> httpx.AsyncClie
     return context.state.http_client
 
 
-@broker.task(task_name="handle_messages")
+@broker.task(
+    task_name="handle_messages", retry_on_exception=True, max_retries=3, retry_delay=5
+)
 async def handle_messages_task(
     message: WhatsAppMessage, client: httpx.AsyncClient = TaskiqDepends(get_http_client)
 ):
     """Handle individual WhatsApp message requests (API endpoint)"""
-    with logger.contextualize(request_id=message.request_id):
-        uow = UnitOfWork(async_session_maker)
-        meta_client = MetaClient(client)
+    async with limiter:
+        with logger.contextualize(request_id=message.request_id):
+            uow = UnitOfWork(async_session_maker)
+            meta_client = MetaClient(client)
 
-        notifier = NotificationService()
-        sender_service = MessageSenderService(uow, meta_client, notifier)
+            notifier = NotificationService()
+            sender_service = MessageSenderService(uow, meta_client, notifier)
 
-        await sender_service.send_manual_message(message)
+            await sender_service.send_manual_message(message)
 
 
 @broker.task(task_name="sync_account_data")
