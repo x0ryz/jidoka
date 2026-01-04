@@ -22,12 +22,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [messageText, setMessageText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Додаємо залежність contact.id, щоб при перемиканні чату прокрутка була миттєвою
   useEffect(() => {
-    scrollToBottom();
+    // При зміні контакту або першому завантаженні - миттєва прокрутка
+    scrollToBottom("auto");
+  }, [contact.id]);
+
+  useEffect(() => {
+    // При нових повідомленнях - плавна
+    scrollToBottom("smooth");
   }, [messages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    // setTimeout гарантує, що DOM вже оновився перед прокруткою
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    }, 100);
   };
 
   const handleSend = () => {
@@ -135,6 +145,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                 src={media.url}
                                 alt={media.caption || media.file_name}
                                 className="max-w-full h-auto"
+                                onLoad={() => scrollToBottom("smooth")} // <--- ДОДАНО ЦЕЙ РЯДОК
                               />
                             ) : media.file_mime_type.startsWith("video/") ? (
                               <video
