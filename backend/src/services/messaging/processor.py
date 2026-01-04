@@ -64,6 +64,9 @@ class MessageProcessorService:
             await self.uow.commit()
 
     async def _handle_messages(self, messages: list[MetaMessage], phone_number_id: str):
+        # Імпортуємо тут, щоб уникнути циклічної залежності з worker.py
+        from src.worker import handle_media_download_task
+
         waba_phone_db_id = None
         async with self.uow:
             waba_phone = await self.uow.waba.get_by_phone_id(phone_number_id)
@@ -109,6 +112,7 @@ class MessageProcessorService:
                 contact.last_message_at = new_msg.created_at
                 self.uow.session.add(contact)
 
+                # --- ЗМІНИ ПОЧИНАЮТЬСЯ ТУТ ---
                 if msg.type in [
                     "image",
                     "video",
@@ -117,27 +121,28 @@ class MessageProcessorService:
                     "voice",
                     "sticker",
                 ]:
-                    await self.media.handle_media_attachment(new_msg.id, msg)
-                    await self.uow.session.flush()
+                    # Отримуємо об'єкт медіа з повідомлення
+                    media_meta = getattr(msg, msg.type, None)
 
-                # ВИПРАВЛЕННЯ: refresh викликається завжди, для всіх типів повідомлень
-                await self.uow.session.refresh(new_msg, ["media_files"])
+                    if media_meta:
+                        # Замість прямого виклику ставимо задачу в чергу
+                        await handle_media_download_task.kiq(
+                            message_id=new_msg.id,
+                            meta_media_id=media_meta.id,
+                            media_type=msg.type,
+                            mime_type=media_meta.mime_type
+                            or "application/octet-stream",
+                            caption=media_meta.caption,
+                        )
+                        logger.info(f"Queued media download for msg {new_msg.id}")
+
+                # --- ЗМІНИ ЗАКІНЧУЮТЬСЯ ТУТ ---
 
                 await self.uow.commit()
 
+                # Тут media_files ще буде пустим, це нормально для асинхронної обробки.
+                # Фронтенд отримає повідомлення, а пізніше (коли воркер скачає) - оновлення з картинкою.
                 media_dtos = []
-                if new_msg.media_files:
-                    for mf in new_msg.media_files:
-                        url = await self.media.storage.get_presigned_url(mf.r2_key)
-                        media_dtos.append(
-                            {
-                                "id": str(mf.id),
-                                "file_name": mf.file_name,
-                                "file_mime_type": mf.file_mime_type,
-                                "url": url,
-                                "caption": mf.caption,
-                            }
-                        )
 
                 await self.notifier.notify_new_message(
                     new_msg,

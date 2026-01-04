@@ -1,9 +1,12 @@
+import mimetypes
+import uuid
 from uuid import UUID
 
 import httpx
 from aiolimiter import AsyncLimiter
 from src.clients.meta import MetaClient
 from src.core.broker import broker
+from src.core.config import settings
 from src.core.database import async_session_maker
 from src.core.logger import setup_logging
 from src.core.uow import UnitOfWork
@@ -16,7 +19,9 @@ from src.schemas import (
 )
 from src.services.campaign.sender import CampaignSenderService
 from src.services.media.service import MediaService
-from src.services.media.storage import StorageService
+
+# Додайте імпорт AsyncIteratorFile, якщо ви додали його в storage.py
+from src.services.media.storage import AsyncIteratorFile, StorageService
 from src.services.messaging.processor import MessageProcessorService
 from src.services.messaging.sender import MessageSenderService
 from src.services.notifications.service import NotificationService
@@ -59,6 +64,77 @@ async def handle_account_sync_task(
             meta_client = MetaClient(client)
             sync_service = SyncService(session, meta_client)
             await sync_service.sync_account_data()
+
+
+# === НОВА ЗАДАЧА ДЛЯ МЕДІА ===
+@broker.task(
+    task_name="download_media", retry_on_exception=True, max_retries=3, retry_delay=5
+)
+async def handle_media_download_task(
+    message_id: UUID,
+    meta_media_id: str,
+    media_type: str,
+    mime_type: str,
+    caption: str | None = None,
+    client: httpx.AsyncClient = TaskiqDepends(get_http_client),
+):
+    """
+    Фонове завантаження медіа-файлів з Meta в R2.
+    Використовує stream, щоб не забивати пам'ять.
+    """
+    with logger.contextualize(message_id=str(message_id), media_id=meta_media_id):
+        uow = UnitOfWork(async_session_maker)
+        meta_client = MetaClient(client)
+        storage_service = StorageService()
+
+        try:
+            # 1. Отримуємо тимчасове посилання від Meta
+            media_url = await meta_client.get_media_url(meta_media_id)
+
+            # 2. Генеруємо шлях для збереження
+            ext = mimetypes.guess_extension(mime_type) or ".bin"
+            filename = f"{uuid.uuid4()}{ext}"
+            r2_key = f"whatsapp/{media_type}s/{filename}"
+
+            logger.info(f"Starting stream download for {media_type}: {r2_key}")
+
+            # 3. Качаємо потік та передаємо його відразу в R2
+            # Використовуємо raw client для стрімінгу, якщо в MetaClient немає методу stream
+            async with client.stream("GET", media_url) as response:
+                response.raise_for_status()
+
+                # Отримуємо розмір файлу з заголовків (якщо є)
+                file_size = int(response.headers.get("content-length", 0))
+
+                # Обгортаємо ітератор в файлоподібний об'єкт
+                file_stream = AsyncIteratorFile(response.aiter_bytes())
+
+                # Заливаємо в R2
+                await storage_service.upload_stream(
+                    file_stream=file_stream,
+                    object_name=r2_key,
+                    content_type=mime_type,
+                )
+
+            # 4. Зберігаємо метадані в БД
+            async with uow:
+                await uow.messages.add_media_file(
+                    message_id=message_id,
+                    meta_media_id=meta_media_id,
+                    file_name=filename,
+                    file_mime_type=mime_type,
+                    file_size=file_size,
+                    caption=caption,
+                    r2_key=r2_key,
+                    bucket_name=settings.R2_BUCKET_NAME,
+                )
+                await uow.commit()
+
+            logger.info(f"Media saved successfully: {r2_key}")
+
+        except Exception as e:
+            logger.error(f"Failed to process media: {e}")
+            # Тут можна додати логіку оновлення статусу повідомлення на FAILED, якщо потрібно
 
 
 @broker.task(

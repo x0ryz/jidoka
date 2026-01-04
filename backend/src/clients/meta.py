@@ -62,11 +62,12 @@ class MetaClient:
         resp.raise_for_status()
         return resp.json().get("url")
 
-    async def download_media_file(self, media_url: str) -> bytes:
-        """Download media file from Meta Graph API."""
-        resp = await self.client.get(media_url)
-        resp.raise_for_status()
-        return resp.content
+    async def stream_media_file(self, media_url: str):
+        """Return a generator for streaming reading"""
+        async with self.client.stream("GET", media_url) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                yield chunk
 
     async def fetch_templates(self, waba_id: str):
         """Fetch message template for a WABA account."""
