@@ -58,7 +58,9 @@ async def handle_account_sync_task(
             await sync_service.sync_account_data()
 
 
-@broker.task(task_name="raw_webhooks")
+@broker.task(
+    task_name="raw_webhooks", retry_on_exception=True, max_retries=5, retry_delay=5
+)
 async def handle_raw_webhook_task(
     event: WebhookEvent, client: httpx.AsyncClient = TaskiqDepends(get_http_client)
 ):
@@ -73,21 +75,17 @@ async def handle_raw_webhook_task(
         except Exception as e:
             logger.error(f"Failed to save webhook log: {e}")
 
-    try:
-        uow = UnitOfWork(async_session_maker)
-        meta_client = MetaClient(client)
+    uow = UnitOfWork(async_session_maker)
+    meta_client = MetaClient(client)
 
-        storage_service = StorageService()
-        notifier = NotificationService()
-        media_service = MediaService(uow, storage_service, meta_client)
+    storage_service = StorageService()
+    notifier = NotificationService()
+    media_service = MediaService(uow, storage_service, meta_client)
 
-        processor_service = MessageProcessorService(uow, media_service, notifier)
+    processor_service = MessageProcessorService(uow, media_service, notifier)
 
-        webhook_payload = MetaWebhookPayload(**event.payload)
-        await processor_service.process_webhook(webhook_payload)
-
-    except Exception:
-        logger.exception("Error processing webhook in service")
+    webhook_payload = MetaWebhookPayload(**event.payload)
+    await processor_service.process_webhook(webhook_payload)
 
 
 @broker.task(task_name="process_campaign_batch")
