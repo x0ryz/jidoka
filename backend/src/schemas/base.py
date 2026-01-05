@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Generic, List, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class SuccessResponse(BaseModel):
@@ -34,8 +34,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page_size: int
     has_next: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TimestampMixin(BaseModel):
@@ -44,8 +43,7 @@ class TimestampMixin(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UUIDMixin(BaseModel):
@@ -53,5 +51,4 @@ class UUIDMixin(BaseModel):
 
     id: UUID
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

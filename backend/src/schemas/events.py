@@ -1,9 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EventType(str, Enum):
@@ -52,13 +52,10 @@ class WSEvent(BaseModel):
     """Base WebSocket event structure"""
 
     event: EventType
-    data: Dict[str, Any]
-    timestamp: datetime = None
+    data: dict[str, Any]
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def __init__(self, **data):
-        if "timestamp" not in data:
-            data["timestamp"] = datetime.utcnow()
-        super().__init__(**data)
+    model_config = ConfigDict(populate_by_name=True)
 
     def to_dict(self) -> dict:
         return {
@@ -66,9 +63,6 @@ class WSEvent(BaseModel):
             "data": self.data,
             "timestamp": self.timestamp.isoformat(),
         }
-
-
-# Campaign Events
 
 
 class CampaignProgressEvent(WSEvent):
@@ -127,9 +121,6 @@ class BatchProgressEvent(WSEvent):
         )
 
 
-# Message Events
-
-
 class MessageStatusEvent(WSEvent):
     """Message status update"""
 
@@ -141,7 +132,6 @@ class MessageStatusEvent(WSEvent):
             "failed": EventType.MESSAGE_FAILED,
         }
 
-        # Frontend prefers STATUS_UPDATE for most logic
         event_type = event_map.get(status, EventType.STATUS_UPDATE)
 
         super().__init__(
@@ -150,7 +140,7 @@ class MessageStatusEvent(WSEvent):
                 "message_id": str(message_id),
                 "wamid": wamid,
                 "status": status,
-                "new_status": status,  # Frontend compatibility
+                "new_status": status,
                 **extra,
             },
         )
@@ -160,7 +150,11 @@ class IncomingMessageEvent(WSEvent):
     """New incoming message from contact"""
 
     def __init__(
-        self, message_id: UUID, contact_id: UUID, phone: str = None, **message_data
+        self,
+        message_id: UUID,
+        contact_id: UUID,
+        phone: str | None = None,
+        **message_data,
     ):
         super().__init__(
             event=EventType.MESSAGE_RECEIVED,
@@ -175,9 +169,6 @@ class IncomingMessageEvent(WSEvent):
         )
 
 
-# Contact Events
-
-
 class ContactUnreadEvent(WSEvent):
     """Contact unread count changed"""
 
@@ -190,9 +181,6 @@ class ContactUnreadEvent(WSEvent):
                 "unread_count": unread_count,
             },
         )
-
-
-# System Events
 
 
 class SyncStatusEvent(WSEvent):
@@ -216,5 +204,5 @@ def create_legacy_event(event_type: str, data: dict) -> dict:
     return {
         "event": event_type,
         "data": data,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }

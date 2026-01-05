@@ -1,84 +1,75 @@
-# backend/src/schemas/contacts.py
-"""
-Pydantic схеми для контактів.
-Використовуються в API endpoints.
-"""
-
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 from src.models.base import ContactStatus, MessageDirection, MessageStatus
 
 from .base import TimestampMixin, UUIDMixin
 
-# === Request Schemas ===
-
 
 class ContactCreate(BaseModel):
-    """Схема створення контакту"""
+    """Contact creation schema"""
 
     phone_number: str = Field(..., min_length=10, max_length=15)
-    name: Optional[str] = Field(None, max_length=255)
-    tags: List[str] = Field(default_factory=list)
+    name: str | None = Field(default=None, max_length=255)
+    tags: list[str] = Field(default_factory=list)
 
     @field_validator("phone_number")
     @classmethod
     def validate_phone(cls, v: str) -> str:
-        # Видаляємо всі нецифрові символи
+        # Remove all non-digit characters
         digits = "".join(c for c in v if c.isdigit())
         if len(digits) < 10 or len(digits) > 15:
             raise ValueError("Phone must be 10-15 digits")
         return digits
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "phone_number": "380671234567",
                 "name": "John Doe",
                 "tags": ["vip", "active"],
             }
         }
+    )
 
 
 class ContactUpdate(BaseModel):
-    """Схема оновлення контакту"""
+    """Contact update schema"""
 
-    name: Optional[str] = Field(None, max_length=255)
-    tags: Optional[List[str]] = None
+    name: str | None = Field(default=None, max_length=255)
+    tags: list[str] | None = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {"name": "John Smith", "tags": ["vip", "premium"]}
         }
+    )
 
 
 class ContactImport(BaseModel):
-    """Схема імпорту контакту з файлу"""
+    """Schema for importing contacts from file"""
 
     phone_number: str
-    name: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-
-
-# === Response Schemas ===
+    name: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class ContactResponse(UUIDMixin, TimestampMixin):
-    """Повна інформація про контакт для API"""
+    """Full contact information for API"""
 
     phone_number: str
-    name: Optional[str] = None
+    name: str | None = None
     unread_count: int
     status: ContactStatus
-    last_message_at: Optional[datetime] = None
-    source: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
+    last_message_at: datetime | None = None
+    source: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "phone_number": "380671234567",
@@ -91,19 +82,20 @@ class ContactResponse(UUIDMixin, TimestampMixin):
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": "2024-01-15T10:30:00Z",
             }
-        }
+        },
+    )
 
 
 class ContactListResponse(BaseModel):
     id: UUID
     phone_number: str
-    name: Optional[str] = None
+    name: str | None = None
     unread_count: int
-    last_message_at: Optional[datetime] = None
-    last_message: Optional[Any] = Field(default=None, exclude=True)
+    last_message_at: datetime | None = None
+    last_message: Any | None = Field(default=None, exclude=True)
 
     @computed_field
-    def last_message_body(self) -> Optional[str]:
+    def last_message_body(self) -> str | None:
         if not hasattr(self, "last_message") or not self.last_message:
             return None
         msg = self.last_message
@@ -112,27 +104,26 @@ class ContactListResponse(BaseModel):
         return f"[{msg.message_type}]"
 
     @computed_field
-    def last_message_status(self) -> Optional[MessageStatus]:
+    def last_message_status(self) -> MessageStatus | None:
         return self.last_message.status if self.last_message else None
 
     @computed_field
-    def last_message_direction(self) -> Optional[MessageDirection]:
+    def last_message_direction(self) -> MessageDirection | None:
         return self.last_message.direction if self.last_message else None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContactImportResult(BaseModel):
-    """Результат імпорту контактів"""
+    """Contact import result"""
 
     total: int = Field(..., description="Total contacts in file")
     imported: int = Field(..., description="Successfully imported")
     skipped: int = Field(..., description="Skipped (duplicates)")
-    errors: List[str] = Field(default_factory=list, description="Error messages")
+    errors: list[str] = Field(default_factory=list, description="Error messages")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "total": 100,
                 "imported": 95,
@@ -143,3 +134,4 @@ class ContactImportResult(BaseModel):
                 ],
             }
         }
+    )

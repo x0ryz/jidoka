@@ -1,75 +1,72 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from src.models.base import CampaignStatus, ContactStatus
 
 from .base import TimestampMixin, UUIDMixin
 
-# === Request Schemas ===
-
 
 class CampaignCreate(BaseModel):
-    """Схема створення кампанії"""
+    """Campaign creation schema"""
 
     name: str = Field(..., min_length=1, max_length=255)
     message_type: Literal["text", "template"] = "template"
-    template_id: Optional[UUID] = None
-    message_body: Optional[str] = None
+    template_id: UUID | None = None
+    message_body: str | None = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "Black Friday Campaign",
                 "message_type": "template",
                 "template_id": "123e4567-e89b-12d3-a456-426614174000",
             }
         }
+    )
 
 
 class CampaignUpdate(BaseModel):
-    """Схема оновлення кампанії"""
+    """Campaign update schema"""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    message_type: Optional[Literal["text", "template"]] = None
-    template_id: Optional[UUID] = None
-    message_body: Optional[str] = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    message_type: Literal["text", "template"] | None = None
+    template_id: UUID | None = None
+    message_body: str | None = None
 
 
 class CampaignSchedule(BaseModel):
-    """Схема планування кампанії"""
+    """Campaign planning schema"""
 
     scheduled_at: datetime = Field(
         ..., description="ISO 8601 datetime when to start the campaign"
     )
 
-    class Config:
-        json_schema_extra = {"example": {"scheduled_at": "2024-12-31T12:00:00Z"}}
-
-
-# === Response Schemas ===
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"scheduled_at": "2024-12-31T12:00:00Z"}}
+    )
 
 
 class CampaignResponse(UUIDMixin, TimestampMixin):
-    """Повна інформація про кампанію"""
+    """Full information about the campaign"""
 
     name: str
     status: CampaignStatus
     message_type: str
-    template_id: Optional[UUID] = None
-    message_body: Optional[str] = None
-    scheduled_at: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    template_id: UUID | None = None
+    message_body: str | None = None
+    scheduled_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     total_contacts: int
     sent_count: int
     delivered_count: int
     failed_count: int
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "name": "Black Friday",
@@ -82,11 +79,12 @@ class CampaignResponse(UUIDMixin, TimestampMixin):
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": "2024-01-15T10:30:00Z",
             }
-        }
+        },
+    )
 
 
 class CampaignStats(BaseModel):
-    """Детальна статистика кампанії"""
+    """Detailed campaign statistics"""
 
     id: UUID
     name: str
@@ -96,15 +94,15 @@ class CampaignStats(BaseModel):
     delivered_count: int
     failed_count: int
     progress_percent: float = Field(..., ge=0, le=100)
-    scheduled_at: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    scheduled_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "name": "Black Friday",
@@ -118,23 +116,24 @@ class CampaignStats(BaseModel):
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": "2024-01-15T10:30:00Z",
             }
-        }
+        },
+    )
 
 
 class CampaignContactResponse(BaseModel):
-    """Інформація про контакт в кампанії"""
+    """Contact information in the campaign"""
 
     id: UUID
     contact_id: UUID
     phone_number: str
-    name: Optional[str] = None
+    name: str | None = None
     status: ContactStatus
-    error_message: Optional[str] = None
+    error_message: str | None = None
     retry_count: int
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "contact_id": "789e4567-e89b-12d3-a456-426614174000",
@@ -144,21 +143,23 @@ class CampaignContactResponse(BaseModel):
                 "error_message": None,
                 "retry_count": 0,
             }
-        }
+        },
+    )
 
 
 class CampaignStartResponse(BaseModel):
-    """Відповідь на запит запуску кампанії"""
+    """Response to campaign launch request"""
 
     status: str = "started"
     campaign_id: UUID
     message: str = "Campaign started successfully"
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "started",
                 "campaign_id": "123e4567-e89b-12d3-a456-426614174000",
                 "message": "Campaign started successfully",
             }
         }
+    )

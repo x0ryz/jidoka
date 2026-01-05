@@ -4,7 +4,11 @@ from src.core.logger import setup_logging
 from src.core.redis import close_redis, init_redis
 from taskiq import TaskiqEvents, TaskiqScheduler, TaskiqState
 from taskiq.schedule_sources import LabelScheduleSource
-from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend, RedisScheduleSource
+from taskiq_redis import (
+    ListQueueBroker,
+    ListRedisScheduleSource,
+    RedisAsyncResultBackend,
+)
 
 logger = setup_logging()
 
@@ -17,7 +21,7 @@ broker = ListQueueBroker(
     queue_name="jidoka_tasks",
 ).with_result_backend(result_backend)
 
-redis_source = RedisScheduleSource(settings.REDIS_URL)
+redis_source = ListRedisScheduleSource(settings.REDIS_URL)
 
 scheduler = TaskiqScheduler(
     broker=broker,

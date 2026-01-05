@@ -1,39 +1,32 @@
-# backend/src/schemas/messages.py
-"""
-Pydantic схеми для повідомлень.
-"""
-
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from src.models.base import MessageDirection, MessageStatus
 
-from .base import TimestampMixin, UUIDMixin
-
-# === Request Schemas ===
+from .base import UUIDMixin
 
 
 class MessageCreate(BaseModel):
-    """Схема створення повідомлення через API"""
+    """Schema for creating a message via API"""
 
     phone_number: str = Field(..., description="Recipient phone number")
     type: Literal["text", "template"] = "text"
     body: str = Field(..., description="Message text or template ID")
-    template_id: Optional[UUID] = None
+    template_id: UUID | None = None
 
 
 class WhatsAppMessage(BaseModel):
-    """Схема для відправки через воркер (внутрішня)"""
+    """Internal schema for sending messages via worker"""
 
     phone_number: str
-    type: Literal["text", "template"]
+    type: Literal["text", "template", "image", "video", "audio", "document", "sticker"]
     body: str
     request_id: str = Field(default_factory=lambda: str(uuid4()))
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "phone_number": "380671234567",
                 "type": "text",
@@ -41,23 +34,21 @@ class WhatsAppMessage(BaseModel):
                 "request_id": "req_123",
             }
         }
-
-
-# === Response Schemas ===
+    )
 
 
 class MediaFileResponse(BaseModel):
-    """Інформація про медіа файл"""
+    """Media file information"""
 
     id: UUID
     file_name: str
     file_mime_type: str
-    caption: Optional[str] = None
+    caption: str | None = None
     url: str = Field(..., description="Presigned URL for download")
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "file_name": "image.jpg",
@@ -65,23 +56,24 @@ class MediaFileResponse(BaseModel):
                 "caption": "Photo caption",
                 "url": "https://storage.example.com/...",
             }
-        }
+        },
+    )
 
 
 class MessageResponse(UUIDMixin):
-    """Повна інформація про повідомлення"""
+    """Full message information"""
 
-    wamid: Optional[str] = None
+    wamid: str | None = None
     direction: MessageDirection
     status: MessageStatus
     message_type: str
-    body: Optional[str] = None
+    body: str | None = None
     created_at: datetime
-    media_files: List[MediaFileResponse] = Field(default_factory=list)
+    media_files: list[MediaFileResponse] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "wamid": "wamid.ABC123",
@@ -92,21 +84,23 @@ class MessageResponse(UUIDMixin):
                 "created_at": "2024-01-15T10:30:00Z",
                 "media_files": [],
             }
-        }
+        },
+    )
 
 
 class MessageSendResponse(BaseModel):
-    """Відповідь на запит відправки"""
+    """Response for send request"""
 
     status: str = "sent"
     message_id: UUID
     request_id: str
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "sent",
                 "message_id": "123e4567-e89b-12d3-a456-426614174000",
                 "request_id": "req_123",
             }
         }
+    )

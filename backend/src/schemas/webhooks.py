@@ -1,145 +1,132 @@
-# backend/src/schemas/webhooks.py
-"""
-Pydantic схеми для обробки вебхуків від Meta.
-"""
+from typing import Any, Literal
 
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel, Field
-
-# === Internal Schemas ===
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WebhookEvent(BaseModel):
-    """Wrapper для raw webhook payload"""
-
-    payload: Dict[str, Any]
-
-    class Config:
-        json_schema_extra = {
-            "example": {"payload": {"object": "whatsapp_business_account", "entry": []}}
-        }
+    payload: dict[str, Any]
 
 
-# === Meta API Webhook Schemas ===
+class MetaBaseModel(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
 
-class MetaProfile(BaseModel):
-    """Профіль контакту в Meta"""
-
+class MetaProfile(MetaBaseModel):
     name: str
 
 
-class MetaContact(BaseModel):
-    """Контакт в Meta webhook"""
-
+class MetaContact(MetaBaseModel):
     wa_id: str
-    profile: MetaProfile
+    profile: MetaProfile | None = None
 
 
-class MetaMedia(BaseModel):
-    """Медіа файл в Meta webhook"""
-
+class MetaMedia(MetaBaseModel):
     id: str
-    mime_type: Optional[str] = None
-    sha256: Optional[str] = None
-    caption: Optional[str] = None
+    mime_type: str | None = None
+    sha256: str | None = None
+    caption: str | None = None
+    filename: str | None = None
 
 
-class MetaText(BaseModel):
-    """Текстове повідомлення"""
-
+class MetaText(MetaBaseModel):
     body: str
 
 
-class MetaMessage(BaseModel):
-    """Вхідне повідомлення від Meta"""
+class MetaLocation(MetaBaseModel):
+    latitude: float
+    longitude: float
+    name: str | None = None
+    address: str | None = None
 
+
+class MetaReaction(MetaBaseModel):
+    message_id: str
+    emoji: str
+
+
+class MetaContext(MetaBaseModel):
+    from_: str = Field(alias="from")
+    id: str
+
+
+class InteractiveButtonReply(MetaBaseModel):
+    id: str
+    title: str
+
+
+class InteractiveListReply(MetaBaseModel):
+    id: str
+    title: str
+    description: str | None = None
+
+
+class MetaInteractive(MetaBaseModel):
+    type: Literal["button_reply", "list_reply"]
+    button_reply: InteractiveButtonReply | None = None
+    list_reply: InteractiveListReply | None = None
+
+
+class MetaReferral(MetaBaseModel):
+    source_url: str
+    source_type: str
+    source_id: str
+    headline: str
+    body: str
+    media_type: str
+    image_url: str | None = None
+    video_url: str | None = None
+    thumbnail_url: str | None = None
+
+
+class MetaMessage(MetaBaseModel):
     from_: str = Field(alias="from")
     id: str
     timestamp: str
     type: str
-    text: Optional[MetaText] = None
-    image: Optional[MetaMedia] = None
-    video: Optional[MetaMedia] = None
-    audio: Optional[MetaMedia] = None
-    voice: Optional[MetaMedia] = None
-    document: Optional[MetaMedia] = None
-    sticker: Optional[MetaMedia] = None
+    context: MetaContext | None = None
+    text: MetaText | None = None
+    image: MetaMedia | None = None
+    video: MetaMedia | None = None
+    audio: MetaMedia | None = None
+    voice: MetaMedia | None = None
+    document: MetaMedia | None = None
+    sticker: MetaMedia | None = None
+    location: MetaLocation | None = None
+    interactive: MetaInteractive | None = None
+    reaction: MetaReaction | None = None
+    referral: MetaReferral | None = None
+    errors: list[dict[str, Any]] | None = None
 
-    class Config:
-        populate_by_name = True
 
-
-class MetaStatus(BaseModel):
-    """Статус повідомлення від Meta"""
-
+class MetaStatus(MetaBaseModel):
     id: str
-    status: str
+    status: Literal["sent", "delivered", "read", "failed"]
     timestamp: str
     recipient_id: str
-    errors: Optional[List[Dict[str, Any]]] = None
+    errors: list[dict[str, Any]] | None = None
+    pricing: dict[str, Any] | None = None
+    conversation: dict[str, Any] | None = None
 
 
-class MetaValue(BaseModel):
-    """Value об'єкт в webhook"""
-
+class MetaValue(MetaBaseModel):
     messaging_product: str
-    metadata: Dict[str, Any]
-    contacts: List[MetaContact] = Field(default_factory=list)
-    messages: List[MetaMessage] = Field(default_factory=list)
-    statuses: List[MetaStatus] = Field(default_factory=list)
+    metadata: dict[str, Any]
+    contacts: list[MetaContact] = Field(default_factory=list)
+    messages: list[MetaMessage] = Field(default_factory=list)
+    statuses: list[MetaStatus] = Field(default_factory=list)
+    errors: list[dict[str, Any]] | None = None
 
 
-class MetaChange(BaseModel):
-    """Change об'єкт в webhook"""
-
+class MetaChange(MetaBaseModel):
     value: MetaValue
     field: str
 
 
-class MetaEntry(BaseModel):
-    """Entry об'єкт в webhook"""
-
+class MetaEntry(MetaBaseModel):
     id: str
-    changes: List[MetaChange] = Field(default_factory=list)
+    changes: list[MetaChange] = Field(default_factory=list)
 
 
-class MetaWebhookPayload(BaseModel):
-    """Повний webhook payload від Meta"""
-
+class MetaWebhookPayload(MetaBaseModel):
     object: str
-    entry: List[MetaEntry] = Field(default_factory=list)
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "object": "whatsapp_business_account",
-                "entry": [
-                    {
-                        "id": "PHONE_NUMBER_ID",
-                        "changes": [
-                            {
-                                "value": {
-                                    "messaging_product": "whatsapp",
-                                    "metadata": {
-                                        "display_phone_number": "380671234567",
-                                        "phone_number_id": "PHONE_NUMBER_ID",
-                                    },
-                                    "messages": [
-                                        {
-                                            "from": "380671234567",
-                                            "id": "wamid.ABC123",
-                                            "timestamp": "1234567890",
-                                            "type": "text",
-                                            "text": {"body": "Hello!"},
-                                        }
-                                    ],
-                                },
-                                "field": "messages",
-                            }
-                        ],
-                    }
-                ],
-            }
-        }
+    entry: list[MetaEntry] = Field(default_factory=list)
