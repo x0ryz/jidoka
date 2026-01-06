@@ -98,6 +98,11 @@ class MessageProcessorService:
                         logger.info(
                             f"Updated reaction for msg {target_msg.id}: {msg.reaction.emoji}"
                         )
+                        await self.notifier.notify_message_reaction(
+                            message_id=target_msg.id,
+                            reaction=msg.reaction.emoji,
+                            phone=msg.from_,
+                        )
                         await self.uow.commit()
                     else:
                         logger.warning(

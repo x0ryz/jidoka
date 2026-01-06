@@ -94,6 +94,10 @@ class MessageSenderService:
 
             logger.info(f"Sent reaction '{emoji}' to {contact.phone_number}")
 
+            await self.notifier.notify_message_reaction(
+                message_id=target_message.id, reaction=emoji, phone=contact.phone_number
+            )
+
         except Exception as e:
             logger.error(f"Failed to send reaction: {e}")
             raise

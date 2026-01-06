@@ -154,17 +154,44 @@ class IncomingMessageEvent(WSEvent):
         message_id: UUID,
         contact_id: UUID,
         phone: str | None = None,
+        reply_to_message_id: UUID | None = None,
+        reaction: str | None = None,
         **message_data,
     ):
+        data = {
+            "id": str(message_id),
+            "message_id": str(message_id),
+            "contact_id": str(contact_id),
+            "phone": phone,
+            "phone_number": phone,
+            "reply_to_message_id": str(reply_to_message_id)
+            if reply_to_message_id
+            else None,
+            "reaction": reaction,
+        }
+        data.update(message_data)
+
         super().__init__(
             event=EventType.MESSAGE_RECEIVED,
+            data=data,
+        )
+
+
+class MessageReactionEvent(WSEvent):
+    """Message reaction update event"""
+
+    def __init__(
+        self,
+        message_id: UUID,
+        reaction: str | None,
+        phone: str | None = None,
+    ):
+        super().__init__(
+            event=EventType.MESSAGE_REACTION,
             data={
-                "id": str(message_id),
                 "message_id": str(message_id),
-                "contact_id": str(contact_id),
+                "reaction": reaction,
                 "phone": phone,
-                "phone_number": phone,
-                **message_data,
             },
         )
 

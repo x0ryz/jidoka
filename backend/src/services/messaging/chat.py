@@ -101,7 +101,7 @@ class ChatService:
                 message_type=msg.message_type,
                 body=msg.body,
                 created_at=msg.created_at,
-                media_files=media_dtos,  # Наші згенеровані URLs
+                media_files=media_dtos,
                 reply_to_message_id=msg.reply_to_message_id,
                 reaction=msg.reaction,
             )

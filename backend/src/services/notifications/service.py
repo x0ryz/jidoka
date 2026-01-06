@@ -3,7 +3,7 @@ from uuid import UUID
 
 from loguru import logger
 from src.core.redis import get_redis
-from src.models import Message
+from src.models import Message, get_utc_now
 from src.schemas.events import (
     BatchProgressEvent,
     CampaignProgressEvent,
@@ -41,8 +41,24 @@ class NotificationService:
             created_at=message.created_at,
             direction=message.direction,
             status=message.status,
+            reply_to_message_id=message.reply_to_message_id,
+            reaction=message.reaction,
         )
         await self._publish(event.to_dict())
+
+    async def notify_message_reaction(
+        self, message_id: UUID, reaction: str | None, phone: str
+    ):
+        event = {
+            "event": "message_reaction",
+            "data": {
+                "message_id": str(message_id),
+                "reaction": reaction,
+                "phone": phone,
+            },
+            "timestamp": get_utc_now().isoformat(),
+        }
+        await self._publish(event)
 
     async def notify_message_status(
         self, message_id: UUID, wamid: str, status: str, **kwargs

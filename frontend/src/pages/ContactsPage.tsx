@@ -89,6 +89,8 @@ const ContactsPage: React.FC = () => {
             body: data.body,
             created_at: data.created_at || new Date().toISOString(),
             media_files: data.media_files || [],
+            reply_to_message_id: data.reply_to_message_id,
+            reaction: data.reaction,
           };
 
           return [...prev, newMessage].sort(
@@ -205,6 +207,18 @@ const ContactsPage: React.FC = () => {
     [selectedContact],
   );
 
+  const handleMessageReaction = useCallback((data: any) => {
+    // Оновлюємо повідомлення в списку
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === data.message_id) {
+          return { ...msg, reaction: data.reaction };
+        }
+        return msg;
+      }),
+    );
+  }, []);
+
   // Підписки на події
   useWSEvent(EventType.NEW_MESSAGE, handleNewMessage);
   useWSEvent(EventType.STATUS_UPDATE, handleMessageStatusUpdate);
@@ -213,6 +227,7 @@ const ContactsPage: React.FC = () => {
   useWSEvent(EventType.MESSAGE_READ, handleMessageStatusUpdate);
   useWSEvent(EventType.MESSAGE_FAILED, handleMessageStatusUpdate);
   useWSEvent(EventType.CONTACT_UNREAD_CHANGED, handleContactUnreadChanged);
+  useWSEvent(EventType.MESSAGE_REACTION, handleMessageReaction);
 
   // --- API Calls ---
 

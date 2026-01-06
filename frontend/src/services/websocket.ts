@@ -21,6 +21,7 @@ export enum EventType {
   BATCH_PROGRESS = "batch_progress",
   SYNC_COMPLETED = "sync_completed",
   STATUS_UPDATE = "status_update",
+  MESSAGE_REACTION = "message_reaction",
 }
 
 export interface WSEvent {

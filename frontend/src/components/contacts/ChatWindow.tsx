@@ -263,8 +263,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
 
         <div className="flex gap-2 items-end bg-white p-2 rounded-2xl border border-gray-200 shadow-sm">
-          <input
-            type="text"
+          <textarea
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
             onKeyDown={(e) => {
