@@ -13,6 +13,7 @@ import {
   CampaignSchedule,
   CampaignContactResponse,
   MessageResponse,
+  MessageSendResponse,
   Template,
   DashboardStats,
   RecentActivity,
@@ -107,14 +108,18 @@ export class ApiClient {
   }
 
   // Messages
-  async sendMessage(params: SendMessageParams): Promise<any> {
+  async sendMessage(params: SendMessageParams): Promise<MessageSendResponse> {
     const payload = {
       phone_number: params.phone,
       body: params.text || params.body,
       type: params.type || "text",
       template_id: params.template_id,
+      reply_to_message_id: params.reply_to_message_id,
     };
-    const response = await this.client.post("/messages", payload);
+    const response = await this.client.post<MessageSendResponse>(
+      "/messages",
+      payload,
+    );
     return response.data;
   }
 

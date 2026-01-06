@@ -257,9 +257,18 @@ const ContactsPage: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async (phone: string, text: string) => {
+  const handleSendMessage = async (
+    phone: string,
+    text: string,
+    replyToId?: string,
+  ) => {
     try {
-      await apiClient.sendMessage({ phone, text, type: "text" });
+      await apiClient.sendMessage({
+        phone,
+        text,
+        type: "text",
+        reply_to_message_id: replyToId, // Додано цей параметр
+      });
       // Повідомлення додасться через WebSocket (handleNewMessage)
     } catch (error) {
       console.error("Помилка відправки повідомлення:", error);

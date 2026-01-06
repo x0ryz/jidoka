@@ -153,6 +153,8 @@ export interface MessageResponse {
   body: string | null;
   created_at: string | null;
   media_files: MediaFileResponse[];
+  reply_to_message_id?: string | null;
+  reaction?: string | null;
 }
 
 export interface MediaFileResponse {
@@ -161,6 +163,12 @@ export interface MediaFileResponse {
   file_mime_type: string;
   caption: string | null;
   url: string;
+}
+
+export interface MessageSendResponse {
+  status: string;
+  message_id: string;
+  request_id: string;
 }
 
 // Template Types
@@ -227,6 +235,7 @@ export interface SendMessageParams {
   text?: string;
   body?: string;
   template_id?: string;
+  reply_to_message_id?: string;
 }
 
 export interface WebhookVerifyParams {

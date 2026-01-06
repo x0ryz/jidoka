@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: true,
-    allowedHosts: ["dev.x0ryz.cc"],
+    allowedHosts: ["noncensurable-obeisantly-val.ngrok-free.dev"],
     proxy: {
       "/api": {
         target: "http://backend:8000",

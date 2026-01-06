@@ -10,7 +10,7 @@ interface ChatWindowProps {
   contact: Contact;
   messages: MessageResponse[];
   loading: boolean;
-  onSendMessage: (phone: string, text: string) => void;
+  onSendMessage: (phone: string, text: string, replyToId?: string) => void;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -20,21 +20,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onSendMessage,
 }) => {
   const [messageText, setMessageText] = useState("");
+  const [replyTo, setReplyTo] = useState<MessageResponse | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Додаємо залежність contact.id, щоб при перемиканні чату прокрутка була миттєвою
   useEffect(() => {
-    // При зміні контакту або першому завантаженні - миттєва прокрутка
     scrollToBottom("auto");
   }, [contact.id]);
 
   useEffect(() => {
-    // При нових повідомленнях - плавна
     scrollToBottom("smooth");
-  }, [messages]);
+  }, [messages, replyTo]); // Scroll when messages change or reply mode is toggled
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    // setTimeout гарантує, що DOM вже оновився перед прокруткою
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior });
     }, 100);
@@ -42,8 +39,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleSend = () => {
     if (messageText.trim()) {
-      onSendMessage(contact.phone_number, messageText);
+      onSendMessage(contact.phone_number, messageText, replyTo?.id);
       setMessageText("");
+      setReplyTo(null);
     }
   };
 
@@ -64,77 +62,113 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         return "✓✓";
       case MessageStatus.READ:
         return "✓✓";
+      case MessageStatus.FAILED:
+        return "!";
       default:
-        return "";
+        return "🕒";
     }
   };
 
-  // Нова функція для визначення кольору статусу
   const getStatusClass = (status: MessageStatus) => {
-    if (status === MessageStatus.READ) {
-      return "text-white font-bold"; // Білий та жирний для прочитаних
-    }
-    return "text-blue-300"; // Тьмяний (сіруватий) для доставлених/відправлених
+    if (status === MessageStatus.READ) return "text-blue-400 font-bold";
+    if (status === MessageStatus.FAILED) return "text-red-500 font-bold";
+    return "text-blue-200";
+  };
+
+  // Helper to find the message being replied to
+  const getReplyingToMessage = (replyId: string | null | undefined) => {
+    if (!replyId) return null;
+    return messages.find((m) => m.id === replyId);
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-[#efeae2]">
+      {" "}
+      {/* WhatsApp-like background color */}
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {contact.name || contact.phone_number}
-            </h2>
-            <p className="text-sm text-gray-600">{contact.phone_number}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {contact.tags && contact.tags.length > 0 && (
-              <div className="flex gap-1">
-                {contact.tags.map((tag, idx) => (
-                  <span
-                    key={idx}
-                    className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+      <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between shadow-sm z-10">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {contact.name || contact.phone_number}
+          </h2>
+          <p className="text-sm text-gray-600">{contact.phone_number}</p>
+        </div>
+        <div className="flex gap-2">
+          {contact.tags?.map((tag, idx) => (
+            <span
+              key={idx}
+              className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border border-gray-200"
+            >
+              {tag}
+            </span>
+          ))}
         </div>
       </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 relative">
         {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-gray-500">Завантаження повідомлень...</div>
-          </div>
-        ) : !messages || messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-500">
-            Немає повідомлень
+            Завантаження...
+          </div>
+        ) : !messages.length ? (
+          <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+            Немає повідомлень. Почніть спілкування.
           </div>
         ) : (
-          <div className="space-y-4">
-            {messages.map((message, index) => {
-              const isOutbound =
-                message.direction === MessageDirection.OUTBOUND;
-              return (
+          messages.map((message) => {
+            const isOutbound = message.direction === MessageDirection.OUTBOUND;
+            const repliedMessage = getReplyingToMessage(
+              message.reply_to_message_id,
+            );
+
+            return (
+              <div
+                key={message.id}
+                className={`flex ${isOutbound ? "justify-end" : "justify-start"} group mb-1`}
+              >
                 <div
-                  key={message.id || `message-${index}`}
-                  className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                  className={`relative max-w-[85%] lg:max-w-[70%] px-3 py-2 rounded-lg shadow-sm text-sm leading-relaxed
+                    ${
                       isOutbound
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-900 border border-gray-200"
+                        ? "bg-[#d9fdd3] text-gray-900 rounded-tr-none"
+                        : "bg-white text-gray-900 rounded-tl-none"
                     }`}
-                  >
-                    {message.body && <p className="text-sm">{message.body}</p>}
-                    {message.media_files && message.media_files.length > 0 && (
-                      <div className="mt-2 space-y-2">
+                >
+                  {/* Reply Context Bubble */}
+                  {repliedMessage && (
+                    <div
+                      className={`mb-2 p-2 rounded border-l-4 text-xs cursor-pointer opacity-80
+                      ${isOutbound ? "bg-[#cfe9c6] border-green-600" : "bg-gray-100 border-gray-400"}`}
+                      onClick={() => {
+                        const el = document.getElementById(
+                          `msg-${repliedMessage.id}`,
+                        );
+                        el?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                      }}
+                    >
+                      <div className="font-bold text-gray-700 mb-1">
+                        {repliedMessage.direction === MessageDirection.OUTBOUND
+                          ? "Ви"
+                          : contact.name || contact.phone_number}
+                      </div>
+                      <div className="truncate line-clamp-1">
+                        {repliedMessage.body || "Медіа файл"}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Message Body */}
+                  <div id={`msg-${message.id}`}>
+                    {message.body && (
+                      <div className="whitespace-pre-wrap">{message.body}</div>
+                    )}
+
+                    {/* Media Files */}
+                    {message.media_files?.length > 0 && (
+                      <div className="mt-2 grid gap-1">
                         {message.media_files.map((media) => (
                           <div
                             key={media.id}
@@ -143,79 +177,113 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             {media.file_mime_type.startsWith("image/") ? (
                               <img
                                 src={media.url}
-                                alt={media.caption || media.file_name}
-                                className="max-w-full h-auto"
-                                onLoad={() => scrollToBottom("smooth")} // <--- ДОДАНО ЦЕЙ РЯДОК
-                              />
-                            ) : media.file_mime_type.startsWith("video/") ? (
-                              <video
-                                src={media.url}
-                                controls
-                                className="max-w-full h-auto"
+                                alt="media"
+                                className="max-w-full h-auto rounded-lg"
+                                loading="lazy"
                               />
                             ) : (
                               <a
                                 href={media.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-2 p-2 bg-gray-100 rounded text-gray-800 hover:bg-gray-200 transition-colors"
+                                className="flex items-center gap-2 p-2 bg-black/5 rounded hover:bg-black/10 transition"
                               >
-                                <span className="text-2xl">📄</span>
-                                <span className="text-sm underline truncate">
-                                  {media.file_name}
-                                </span>
+                                <span>📎</span> {media.file_name}
                               </a>
-                            )}
-                            {media.caption && (
-                              <p className="text-xs mt-1 opacity-90">
-                                {media.caption}
-                              </p>
                             )}
                           </div>
                         ))}
                       </div>
                     )}
-                    <div
-                      className={`flex items-center justify-end gap-2 mt-1 text-xs ${
-                        isOutbound ? "text-blue-100" : "text-gray-500"
-                      }`}
-                    >
-                      <span>{formatMessageTime(message.created_at)}</span>
-                      {isOutbound && (
-                        /* Оновлено тут: додано виклик getStatusClass */
-                        <span
-                          className={`text-xs ${getStatusClass(message.status)}`}
-                        >
-                          {getStatusIcon(message.status)}
-                        </span>
-                      )}
-                    </div>
                   </div>
+
+                  {/* Metadata: Time & Status */}
+                  <div className="flex items-center justify-end gap-1 mt-1 select-none">
+                    <span className="text-[10px] text-gray-500">
+                      {formatMessageTime(message.created_at)}
+                    </span>
+                    {isOutbound && (
+                      <span
+                        className={`text-[10px] ${getStatusClass(message.status)}`}
+                      >
+                        {getStatusIcon(message.status)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Reaction Bubble (Absolute positioned) */}
+                  {message.reaction && (
+                    <div
+                      className={`absolute -bottom-3 ${isOutbound ? "right-0" : "left-0"}
+                      bg-white rounded-full px-1.5 py-0.5 shadow-sm text-base border border-gray-100 z-10`}
+                    >
+                      {message.reaction}
+                    </div>
+                  )}
+
+                  {/* Reply Action Button (Visible on Hover) */}
+                  <button
+                    onClick={() => setReplyTo(message)}
+                    className={`absolute top-0 ${isOutbound ? "-left-8" : "-right-8"}
+                      opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity`}
+                    title="Відповісти"
+                  >
+                    ↩️
+                  </button>
                 </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
+              </div>
+            );
+          })
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+      {/* Input Area */}
+      <div className="bg-gray-100 p-2">
+        {/* Reply Preview Panel */}
+        {replyTo && (
+          <div className="flex justify-between items-center bg-white p-2 mb-2 rounded-lg border-l-4 border-blue-500 shadow-sm mx-2">
+            <div className="text-sm overflow-hidden">
+              <span className="text-blue-600 font-semibold text-xs block mb-0.5">
+                Відповідь для:{" "}
+                {replyTo.direction === MessageDirection.OUTBOUND
+                  ? "Ви"
+                  : contact.name || contact.phone_number}
+              </span>
+              <div className="text-gray-500 truncate">
+                {replyTo.body || "Медіа файл"}
+              </div>
+            </div>
+            <button
+              onClick={() => setReplyTo(null)}
+              className="text-gray-400 hover:text-gray-600 p-1"
+            >
+              ✕
+            </button>
           </div>
         )}
-      </div>
 
-      {/* Input */}
-      <div className="p-4 border-t border-gray-200 bg-white">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-end bg-white p-2 rounded-2xl border border-gray-200 shadow-sm">
           <input
             type="text"
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Введіть повідомлення..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Написати повідомлення..."
+            className="flex-1 max-h-32 px-2 py-2 bg-transparent outline-none text-gray-800 placeholder-gray-400 overflow-y-auto resize-none"
+            rows={1}
+            style={{ minHeight: "40px" }}
           />
           <button
             onClick={handleSend}
             disabled={!messageText.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex-shrink-0 w-10 h-10 flex items-center justify-center"
           >
-            Відправити
+            ➤
           </button>
         </div>
       </div>
