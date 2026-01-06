@@ -41,6 +41,7 @@ async def send_message(data: MessageCreate):
         type=data.type,
         body=message_body,
         request_id=request_id,
+        reply_to_message_id=data.reply_to_message_id,
     )
 
     await handle_messages_task.kiq(message_obj)

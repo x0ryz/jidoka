@@ -53,7 +53,50 @@ class MessageSenderService:
                 template_id=template_id,
                 template_name=template_name,
                 is_campaign=False,
+                reply_to_message_id=message.reply_to_message_id,
             )
+
+    async def send_reaction(
+        self, contact: Contact, message_id: uuid.UUID, emoji: str = ""
+    ):
+        """
+        Send (or remove) a reaction to a specific message.
+        To remove a reaction, pass an empty string as emoji.
+        """
+        # 1. Знаходимо повідомлення, на яке реагуємо
+        target_message = await self.uow.messages.get_by_id(message_id)
+        if not target_message or not target_message.wamid:
+            logger.error(
+                f"Cannot react: Message {message_id} not found or has no WAMID"
+            )
+            return
+
+        waba_phone = await self.uow.waba.get_default_phone()
+
+        # 2. Формуємо payload
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": contact.phone_number,
+            "type": "reaction",
+            "reaction": {"message_id": target_message.wamid, "emoji": emoji},
+        }
+
+        try:
+            # 3. Відправляємо в Meta
+            await self.meta_client.send_message(waba_phone.phone_number_id, payload)
+
+            # 4. Оновлюємо статус в нашій базі (опціонально, щоб бачити свої реакції)
+            # Примітка: Meta не повертає новий ID для реакції, це просто оновлення.
+            target_message.reaction = emoji
+            self.uow.session.add(target_message)
+            await self.uow.commit()
+
+            logger.info(f"Sent reaction '{emoji}' to {contact.phone_number}")
+
+        except Exception as e:
+            logger.error(f"Failed to send reaction: {e}")
+            raise
 
     async def send_to_contact(
         self,
@@ -63,6 +106,7 @@ class MessageSenderService:
         template_id: uuid.UUID | None = None,
         template_name: str | None = None,
         is_campaign: bool = False,
+        reply_to_message_id: uuid.UUID | None = None,
     ) -> Message:
         """
         Send message to a contact.
@@ -73,6 +117,14 @@ class MessageSenderService:
         if not waba_phone:
             raise ValueError("No WABA Phone numbers found in DB.")
 
+        context_wamid = None
+        if reply_to_message_id:
+            parent_msg = await self.uow.messages.get_by_id(reply_to_message_id)
+            if parent_msg:
+                context_wamid = parent_msg.wamid
+            else:
+                logger.warning(f"Reply target message {reply_to_message_id} not found")
+
         # Create message entity
         message = await self.uow.messages.create(
             waba_phone_id=waba_phone.id,
@@ -82,6 +134,7 @@ class MessageSenderService:
             message_type=message_type,
             body=body if message_type == "text" else template_name,
             template_id=template_id,
+            reply_to_message_id=reply_to_message_id,
         )
 
         await self.uow.session.flush()
@@ -125,6 +178,7 @@ class MessageSenderService:
                 message_type=message_type,
                 body=body,
                 template_name=template_name,
+                context_wamid=context_wamid,
             )
 
             result = await self.meta_client.send_message(
@@ -166,6 +220,7 @@ class MessageSenderService:
         template_id: uuid.UUID | None,
         template_name: str | None,
         is_campaign: bool,
+        reply_to_message_id: uuid.UUID | None = None,
     ):
         try:
             await self.send_to_contact(
@@ -175,6 +230,7 @@ class MessageSenderService:
                 template_id=template_id,
                 template_name=template_name,
                 is_campaign=is_campaign,
+                reply_to_message_id=reply_to_message_id,
             )
             await self.uow.commit()
         except Exception:
@@ -182,7 +238,12 @@ class MessageSenderService:
             raise
 
     def _build_payload(
-        self, to_phone: str, message_type: str, body: str, template_name: str | None
+        self,
+        to_phone: str,
+        message_type: str,
+        body: str,
+        template_name: str | None,
+        context_wamid: str | None = None,
     ) -> dict:
         """Build WhatsApp API payload."""
         payload = {
@@ -191,6 +252,8 @@ class MessageSenderService:
             "to": to_phone,
             "type": message_type,
         }
+        if context_wamid:
+            payload["context"] = {"message_id": context_wamid}
         if message_type == "text":
             payload["text"] = {"body": body}
         elif message_type == "template":

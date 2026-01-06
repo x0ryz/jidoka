@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy.orm import selectinload
 from sqlmodel import desc, select
 from src.models import MediaFile, Message, MessageStatus
@@ -46,6 +48,10 @@ class MessageRepository(BaseRepository[Message]):
         result = await self.session.exec(stmt)
         return result.first()
 
+    async def get_by_id(self, message_id: UUID) -> Message | None:
+        """Get message by internal UUID."""
+        return await self.session.get(Message, message_id)
+
     async def update_status(self, wamid: str, status: MessageStatus) -> Message | None:
         """
         Update message status.
@@ -61,11 +67,15 @@ class MessageRepository(BaseRepository[Message]):
     async def get_chat_history(
         self, contact_id: str, limit: int, offset: int
     ) -> list[Message]:
-        """Get message history with contact, including media files."""
         stmt = (
             select(Message)
             .where(Message.contact_id == contact_id)
-            .options(selectinload(Message.media_files))
+            .options(
+                selectinload(Message.media_files),
+                selectinload(Message.parent_message).options(
+                    selectinload(Message.media_files)
+                ),
+            )
             .order_by(desc(Message.created_at))
             .offset(offset)
             .limit(limit)

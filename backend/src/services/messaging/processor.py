@@ -1,6 +1,10 @@
+import base64
+import binascii
+from typing import Optional
+
 from loguru import logger
 from src.core.uow import UnitOfWork
-from src.models import MessageDirection, MessageStatus, get_utc_now
+from src.models import Message, MessageDirection, MessageStatus, get_utc_now
 from src.schemas import MetaMessage, MetaStatus, MetaWebhookPayload
 from src.services.media.service import MediaService
 from src.services.notifications.service import NotificationService
@@ -64,7 +68,6 @@ class MessageProcessorService:
             await self.uow.commit()
 
     async def _handle_messages(self, messages: list[MetaMessage], phone_number_id: str):
-        # Імпортуємо тут, щоб уникнути циклічної залежності з worker.py
         from src.worker import handle_media_download_task
 
         waba_phone_db_id = None
@@ -78,6 +81,30 @@ class MessageProcessorService:
             return
 
         for msg in messages:
+            if msg.type == "reaction" and msg.reaction:
+                async with self.uow:
+                    target_msg = await self.uow.messages.get_by_wamid(
+                        msg.reaction.message_id
+                    )
+
+                    if not target_msg:
+                        target_msg = await self._fuzzy_find_message(
+                            msg.from_, msg.reaction.message_id
+                        )
+
+                    if target_msg:
+                        target_msg.reaction = msg.reaction.emoji
+                        self.uow.session.add(target_msg)
+                        logger.info(
+                            f"Updated reaction for msg {target_msg.id}: {msg.reaction.emoji}"
+                        )
+                        await self.uow.commit()
+                    else:
+                        logger.warning(
+                            f"Target message {msg.reaction.message_id} not found anywhere."
+                        )
+                continue
+
             async with self.uow:
                 if await self.uow.messages.get_by_wamid(msg.id):
                     logger.info(f"Message {msg.id} deduplicated")
@@ -91,10 +118,48 @@ class MessageProcessorService:
                 body = None
                 if msg.type == "text":
                     body = msg.text.body
+                elif msg.type == "interactive":
+                    interactive = msg.interactive
+                    if interactive.type == "button_reply":
+                        body = interactive.button_reply.title
+                    elif interactive.type == "list_reply":
+                        body = interactive.list_reply.title
+                elif msg.type == "location":
+                    loc = msg.location
+                    body = f"Location: {loc.name or ''} {loc.address or ''} ({loc.latitude}, {loc.longitude})".strip()
+                elif msg.type == "contacts" and msg.contacts:
+                    c = msg.contacts[0]
+                    name = c.name.formatted_name if c.name else "Unknown"
+                    phone = c.phones[0].phone if c.phones else "No phone"
+                    body = f"Contact: {name} ({phone})"
                 elif hasattr(msg, msg.type):
                     media_obj = getattr(msg, msg.type)
                     if hasattr(media_obj, "caption"):
                         body = media_obj.caption
+
+                reply_to_uuid = None
+
+                if msg.context and msg.context.id:
+                    ctx_wamid = msg.context.id
+                    parent_msg = await self.uow.messages.get_by_wamid(ctx_wamid)
+
+                    if not parent_msg:
+                        logger.info(
+                            f"Context parent {ctx_wamid} not found directly. Trying fuzzy match."
+                        )
+                        parent_msg = await self._fuzzy_find_message(
+                            msg.from_, ctx_wamid
+                        )
+
+                    if parent_msg:
+                        reply_to_uuid = parent_msg.id
+                        logger.info(
+                            f"Linked reply to parent message UUID: {parent_msg.id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Parent message with WAMID {ctx_wamid} not found. Reply link will be null."
+                        )
 
                 new_msg = await self.uow.messages.create(
                     waba_phone_id=waba_phone_db_id,
@@ -104,6 +169,7 @@ class MessageProcessorService:
                     wamid=msg.id,
                     message_type=msg.type,
                     body=body,
+                    reply_to_message_id=reply_to_uuid,
                 )
 
                 await self.uow.session.flush()
@@ -112,7 +178,6 @@ class MessageProcessorService:
                 contact.last_message_at = new_msg.created_at
                 self.uow.session.add(contact)
 
-                # --- ЗМІНИ ПОЧИНАЮТЬСЯ ТУТ ---
                 if msg.type in [
                     "image",
                     "video",
@@ -121,11 +186,9 @@ class MessageProcessorService:
                     "voice",
                     "sticker",
                 ]:
-                    # Отримуємо об'єкт медіа з повідомлення
                     media_meta = getattr(msg, msg.type, None)
 
                     if media_meta:
-                        # Замість прямого виклику ставимо задачу в чергу
                         await handle_media_download_task.kiq(
                             message_id=new_msg.id,
                             meta_media_id=media_meta.id,
@@ -136,12 +199,8 @@ class MessageProcessorService:
                         )
                         logger.info(f"Queued media download for msg {new_msg.id}")
 
-                # --- ЗМІНИ ЗАКІНЧУЮТЬСЯ ТУТ ---
-
                 await self.uow.commit()
 
-                # Тут media_files ще буде пустим, це нормально для асинхронної обробки.
-                # Фронтенд отримає повідомлення, а пізніше (коли воркер скачає) - оновлення з картинкою.
                 media_dtos = []
 
                 await self.notifier.notify_new_message(
@@ -177,3 +236,32 @@ class MessageProcessorService:
             MessageStatus.FAILED: 4,
         }
         return weights.get(new, -1) > weights.get(old, -1)
+
+    async def _fuzzy_find_message(self, phone_number: str, target_wamid: str):
+        """Шукає повідомлення за останніми 8 байтами ID (ігнорує префікс)."""
+        try:
+            contact = await self.uow.contacts.get_or_create(phone_number)
+            # Беремо останні 50 повідомлень
+            last_msgs = await self.uow.messages.get_chat_history(
+                contact.id, limit=50, offset=0
+            )
+
+            target_clean = target_wamid.replace("wamid.", "")
+            try:
+                target_suffix = base64.b64decode(target_clean)[-8:]
+            except Exception:
+                return None
+
+            for m in last_msgs:
+                if not m.wamid:
+                    continue
+                try:
+                    m_suffix = base64.b64decode(m.wamid.replace("wamid.", ""))[-8:]
+                    if m_suffix == target_suffix:
+                        return m
+                except Exception:
+                    continue
+            return None
+        except Exception as e:
+            logger.error(f"Fuzzy search error: {e}")
+            return None

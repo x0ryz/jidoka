@@ -78,6 +78,23 @@ class MetaReferral(MetaBaseModel):
     thumbnail_url: str | None = None
 
 
+class MetaContactName(MetaBaseModel):
+    formatted_name: str
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class MetaContactPhone(MetaBaseModel):
+    phone: str | None = None
+    type: str | None = None
+    wa_id: str | None = None
+
+
+class MetaContactPayload(MetaBaseModel):
+    name: MetaContactName | None = None
+    phones: list[MetaContactPhone] = Field(default_factory=list)
+
+
 class MetaMessage(MetaBaseModel):
     from_: str = Field(alias="from")
     id: str
@@ -94,6 +111,7 @@ class MetaMessage(MetaBaseModel):
     location: MetaLocation | None = None
     interactive: MetaInteractive | None = None
     reaction: MetaReaction | None = None
+    contacts: list[MetaContactPayload] | None = None
     referral: MetaReferral | None = None
     errors: list[dict[str, Any]] | None = None
 

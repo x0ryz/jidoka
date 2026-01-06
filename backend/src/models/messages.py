@@ -49,6 +49,11 @@ class Message(SQLModel, table=True):
     message_type: str = Field(default="text")
     body: Optional[str] = Field(default=None)
 
+    reply_to_message_id: Optional[UUID] = Field(
+        default=None, foreign_key="messages.id", nullable=True
+    )
+    reaction: Optional[str] = Field(default=None, nullable=True)
+
     template_id: Optional[UUID] = Field(default=None, foreign_key="templates.id")
 
     media_files: List[MediaFile] = Relationship(back_populates="message")
@@ -65,3 +70,7 @@ class Message(SQLModel, table=True):
         sa_relationship_kwargs={"foreign_keys": "[Message.contact_id]"},
     )
     waba_phone: Optional["WabaPhoneNumber"] = Relationship(back_populates="messages")
+
+    parent_message: Optional["Message"] = Relationship(
+        sa_relationship_kwargs={"remote_side": "Message.id"}
+    )

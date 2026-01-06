@@ -15,6 +15,7 @@ class MessageCreate(BaseModel):
     type: Literal["text", "template"] = "text"
     body: str = Field(..., description="Message text or template ID")
     template_id: UUID | None = None
+    reply_to_message_id: UUID | None = None
 
 
 class WhatsAppMessage(BaseModel):
@@ -23,6 +24,7 @@ class WhatsAppMessage(BaseModel):
     phone_number: str
     type: Literal["text", "template", "image", "video", "audio", "document", "sticker"]
     body: str
+    reply_to_message_id: UUID | None = None
     request_id: str = Field(default_factory=lambda: str(uuid4()))
 
     model_config = ConfigDict(
@@ -69,10 +71,13 @@ class MessageResponse(UUIDMixin):
     message_type: str
     body: str | None = None
     created_at: datetime
+    reply_to_message_id: UUID | None = None
+    reaction: str | None = None
     media_files: list[MediaFileResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(
         from_attributes=True,
+        populate_by_name=True,
         json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
@@ -81,6 +86,8 @@ class MessageResponse(UUIDMixin):
                 "status": "delivered",
                 "message_type": "text",
                 "body": "Hello, World!",
+                "reply_to_message_id": "123e4567-e89b-12d3-a456-426614174000",
+                "reaction": "👍",
                 "created_at": "2024-01-15T10:30:00Z",
                 "media_files": [],
             }

@@ -87,22 +87,12 @@ class ChatService:
             await self.uow.commit()
 
     async def _format_messages(self, messages) -> list[MessageResponse]:
-        """
-        Format messages with presigned media URLs.
-
-        Args:
-            messages: List of Message objects with media_files loaded
-
-        Returns:
-            List of MessageResponse DTOs in chronological order
-        """
+        """Format messages with presigned media URLs."""
         response_data = []
 
         for msg in messages:
-            # Format media files
             media_dtos = await self._format_media_files(msg.media_files)
 
-            # Create message DTO
             msg_dto = MessageResponse(
                 id=msg.id,
                 wamid=msg.wamid,
@@ -111,12 +101,13 @@ class ChatService:
                 message_type=msg.message_type,
                 body=msg.body,
                 created_at=msg.created_at,
-                media_files=media_dtos,
+                media_files=media_dtos,  # Наші згенеровані URLs
+                reply_to_message_id=msg.reply_to_message_id,
+                reaction=msg.reaction,
             )
 
             response_data.append(msg_dto)
 
-        # Return in chronological order (oldest first)
         return list(reversed(response_data))
 
     async def _format_media_files(self, media_files) -> list[MediaFileResponse]:
