@@ -102,6 +102,33 @@ class MessageSenderService:
             logger.error(f"Failed to send reaction: {e}")
             raise
 
+    async def send_file_to_client(
+        self, phone: str, file_content: bytes, mime_type: str, caption: str = None
+    ):
+        waba_phone = await self.uow.waba.get_default_phone()
+
+        media_id = await self.meta_client.upload_media(
+            phone_number_id=waba_phone.phone_number_id,
+            file=file_content,
+            mime_type=mime_type,
+        )
+
+        msg_type = "document"
+        if mime_type.startswith("image/"):
+            msg_type = "image"
+        elif mime_type.startswith("video/"):
+            msg_type = "video"
+
+        payload = self._build_payload(
+            to_phone=phone,
+            message_type=msg_type,
+            body=media_id,
+            template_name=None,
+            caption=caption,
+        )
+
+        await self.meta_client.send_message(waba_phone.phone_number_id, payload)
+
     async def send_to_contact(
         self,
         contact: Contact,
@@ -248,6 +275,7 @@ class MessageSenderService:
         body: str,
         template_name: str | None,
         context_wamid: str | None = None,
+        caption: str | None = None,
     ) -> dict:
         """Build WhatsApp API payload."""
         payload = {
@@ -267,4 +295,14 @@ class MessageSenderService:
                 "name": template_name,
                 "language": {"code": "en_US"},
             }
+        elif message_type in ["image", "document", "audio", "video", "sticker"]:
+            media_object = {"id": body}
+            if caption and message_type in ["image", "document", "video"]:
+                media_object["caption"] = caption
+
+            if message_type == "document" and caption:
+                media_object["filename"] = caption
+
+            payload[message_type] = media_object
         return payload
+

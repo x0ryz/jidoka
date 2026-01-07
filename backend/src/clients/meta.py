@@ -75,3 +75,20 @@ class MetaClient:
         resp = await self.client.get(url)
         resp.raise_for_status()
         return resp.json()
+
+    async def upload_media(
+        self, phone_id: str, file_content: bytes, mime_type: str
+    ) -> str:
+        """
+        Upload media to Meta to get a media_id handle.
+        Corresponds to the curl command: POST /<phone_id>/media
+        """
+        url = f"{self.base_url}/{phone_id}/media"
+
+        data = {"messaging_product": "whatsapp"}
+        files = {"file": ("file", file_content, mime_type)}
+
+        resp = await self.client.post(url, data=data, files=files)
+        resp.raise_for_status()
+
+        return resp.json()["id"]
