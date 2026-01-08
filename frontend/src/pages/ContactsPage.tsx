@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom"; // ДОДАНО
+import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../api";
 import {
   Contact,
   MessageResponse,
   MessageDirection,
   MessageStatus,
+  Tag,
+  TagCreate,
+  TagUpdate,
 } from "../types";
 import ContactList from "../components/contacts/ContactList";
 import ChatWindow from "../components/contacts/ChatWindow";
@@ -13,7 +16,7 @@ import { useWSEvent } from "../services/useWebSocket";
 import { EventType } from "../services/websocket";
 
 const ContactsPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams(); // ДОДАНО
+  const [searchParams, setSearchParams] = useSearchParams();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<MessageResponse[]>([]);
@@ -21,13 +24,16 @@ const ContactsPage: React.FC = () => {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Завантаження контактів при старті
+  // Стейт для тегів
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+
+  // Завантаження контактів та тегів при старті
   useEffect(() => {
     loadContacts();
+    loadTags();
   }, []);
 
-  // ДОДАНО: Синхронізація URL -> State
-  // Коли завантажились контакти, перевіряємо чи є contact_id в URL
+  // Синхронізація URL -> вибраний контакт
   useEffect(() => {
     const contactIdFromUrl = searchParams.get("contact_id");
     if (contactIdFromUrl && contacts.length > 0 && !selectedContact) {
@@ -38,16 +44,16 @@ const ContactsPage: React.FC = () => {
     }
   }, [contacts, searchParams, selectedContact]);
 
-  // ДОДАНО: Обробник вибору контакту, який оновлює URL
+  // Обробник вибору контакту з оновленням URL
   const handleSelectContact = (contact: Contact) => {
     setSelectedContact(contact);
     setSearchParams({ contact_id: contact.id });
   };
 
-  // Коли обираємо контакт - завантажуємо повідомлення і скидаємо лічильник локально
+  // Завантаження чату при виборі контакту
   useEffect(() => {
     if (selectedContact) {
-      // 1. Локально скидаємо unread_count (візуально)
+      // 1. Локально скидаємо unread_count
       setContacts((prev) =>
         prev.map((c) =>
           c.id === selectedContact.id ? { ...c, unread_count: 0 } : c,
@@ -67,8 +73,6 @@ const ContactsPage: React.FC = () => {
 
       const msgPhone = data.phone || data.from || data.phone_number;
       const msgContactId = data.contact_id;
-
-      // Визначаємо тип повідомлення
       const msgType = data.type || data.message_type || "text";
       const isMedia = [
         "image",
@@ -78,7 +82,6 @@ const ContactsPage: React.FC = () => {
         "sticker",
       ].includes(msgType);
 
-      // Перевіряємо, чи це повідомлення для поточного чату
       const isForCurrentChat =
         selectedContact &&
         ((msgContactId && msgContactId === selectedContact.id) ||
@@ -89,15 +92,12 @@ const ContactsPage: React.FC = () => {
         (data.from ? MessageDirection.INBOUND : MessageDirection.OUTBOUND);
 
       if (isForCurrentChat) {
-        // 1. ВАЖЛИВО: Якщо це вхідне повідомлення у відкритому чаті - позначаємо як прочитане на бекенді
         if (direction === MessageDirection.INBOUND) {
           apiClient.markContactAsRead(selectedContact.id).catch(console.error);
         }
 
-        // 2. Оновлюємо список повідомлень
         setMessages((prev) => {
           if (!Array.isArray(prev)) return [data];
-          // Запобігаємо дублікатам
           if (prev.some((m) => m.id === data.id)) return prev;
 
           const newMessage: MessageResponse = {
@@ -120,9 +120,7 @@ const ContactsPage: React.FC = () => {
           );
         });
 
-        // ХАК: Якщо це медіа, але файлів немає (бекенд ще качає) - оновлюємо чат через 2 сек
         if (isMedia && (!data.media_files || data.media_files.length === 0)) {
-          console.log("WS: Media message without files. Scheduling refresh...");
           setTimeout(() => {
             if (selectedContact) {
               loadMessages(selectedContact.id);
@@ -131,7 +129,6 @@ const ContactsPage: React.FC = () => {
         }
       }
 
-      // 3. Оновлюємо список контактів (прев'ю, час, лічильник)
       setContacts((prev) => {
         const updated = prev.map((contact) => {
           const isMatch =
@@ -146,7 +143,6 @@ const ContactsPage: React.FC = () => {
                 data.body || (isMedia ? `[${msgType}]` : data.body),
               last_message_status: data.status,
               last_message_direction: direction,
-              // Якщо чат відкритий - не збільшуємо лічильник
               unread_count: isForCurrentChat
                 ? 0
                 : (contact.unread_count || 0) + 1,
@@ -155,7 +151,6 @@ const ContactsPage: React.FC = () => {
           return contact;
         });
 
-        // Сортуємо: нові зверху
         return updated.sort((a, b) => {
           const dateA = new Date(a.last_message_at || 0).getTime();
           const dateB = new Date(b.last_message_at || 0).getTime();
@@ -167,11 +162,9 @@ const ContactsPage: React.FC = () => {
   );
 
   const handleMessageStatusUpdate = useCallback((data: any) => {
-    // 1. Отримуємо новий статус
     const newStatus = data.new_status || data.status;
     if (!newStatus) return;
 
-    // 2. Оновлюємо статус повідомлення в чаті
     setMessages((prev) => {
       if (!Array.isArray(prev)) return [];
       return prev.map((msg) => {
@@ -191,7 +184,6 @@ const ContactsPage: React.FC = () => {
       });
     });
 
-    // 3. Оновлюємо статус останнього повідомлення в списку контактів
     setContacts((prev) =>
       prev.map((contact) => {
         const isContactMatch =
@@ -214,7 +206,6 @@ const ContactsPage: React.FC = () => {
       setContacts((prev) =>
         prev.map((contact) => {
           if (contact.id === data.contact_id) {
-            // Якщо це поточний активний контакт - ігноруємо збільшення лічильника (або ставимо 0)
             if (selectedContact && selectedContact.id === contact.id) {
               return { ...contact, unread_count: 0 };
             }
@@ -228,7 +219,6 @@ const ContactsPage: React.FC = () => {
   );
 
   const handleMessageReaction = useCallback((data: any) => {
-    // Оновлюємо повідомлення в списку
     setMessages((prev) =>
       prev.map((msg) => {
         if (msg.id === data.message_id) {
@@ -260,6 +250,15 @@ const ContactsPage: React.FC = () => {
       console.error("Помилка завантаження контактів:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadTags = async () => {
+    try {
+      const tags = await apiClient.getTags();
+      setAvailableTags(tags);
+    } catch (error) {
+      console.error("Помилка завантаження тегів:", error);
     }
   };
 
@@ -323,6 +322,98 @@ const ContactsPage: React.FC = () => {
     }
   };
 
+  // --- Методи для роботи з тегами ---
+
+  const handleCreateTag = async (data: TagCreate) => {
+    try {
+      await apiClient.createTag(data);
+      await loadTags();
+    } catch (error) {
+      console.error("Помилка створення тегу:", error);
+      alert("Не вдалося створити тег");
+    }
+  };
+
+  const handleDeleteTag = async (tagId: string) => {
+    try {
+      await apiClient.deleteTag(tagId);
+      await loadTags();
+      await loadContacts(); // Перезавантажуємо, щоб оновити контакти без видаленого тегу
+
+      if (selectedContact) {
+        const updatedTags = selectedContact.tags.filter((t) => t.id !== tagId);
+        setSelectedContact({ ...selectedContact, tags: updatedTags });
+      }
+    } catch (error) {
+      console.error("Помилка видалення тегу:", error);
+    }
+  };
+
+  const handleEditTag = async (tagId: string, data: TagUpdate) => {
+    try {
+      // 1. Оновлюємо на сервері
+      const updatedTag = await apiClient.updateTag(tagId, data);
+
+      // 2. Оновлюємо список доступних тегів (для селектора)
+      setAvailableTags((prev) =>
+        prev.map((t) => (t.id === tagId ? updatedTag : t)),
+      );
+
+      // 3. Оновлюємо поточний відкритий контакт (якщо в нього є цей тег)
+      if (selectedContact) {
+        const hasTag = selectedContact.tags.some((t) => t.id === tagId);
+        if (hasTag) {
+          setSelectedContact((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              tags: prev.tags.map((t) => (t.id === tagId ? updatedTag : t)),
+            };
+          });
+        }
+      }
+
+      // 4. Оновлюємо весь список контактів (щоб плашки в лівій колонці перефарбувалися)
+      setContacts((prevContacts) =>
+        prevContacts.map((contact) => {
+          // Якщо у контакта немає тегів, пропускаємо
+          if (!contact.tags || contact.tags.length === 0) return contact;
+
+          // Перевіряємо, чи є у контакта редагований тег
+          const tagIndex = contact.tags.findIndex((t) => t.id === tagId);
+          if (tagIndex === -1) return contact;
+
+          // Створюємо новий масив тегів для контакту з оновленим тегом
+          const newTags = [...contact.tags];
+          newTags[tagIndex] = updatedTag;
+
+          return { ...contact, tags: newTags };
+        }),
+      );
+    } catch (error) {
+      console.error("Помилка редагування тегу:", error);
+      alert("Не вдалося оновити тег");
+    }
+  };
+
+  const handleUpdateContactTags = async (tagIds: string[]) => {
+    if (!selectedContact) return;
+
+    try {
+      const updatedContact = await apiClient.updateContact(selectedContact.id, {
+        tag_ids: tagIds,
+      });
+
+      setSelectedContact(updatedContact);
+      setContacts((prev) =>
+        prev.map((c) => (c.id === updatedContact.id ? updatedContact : c)),
+      );
+    } catch (error) {
+      console.error("Помилка оновлення тегів контакту:", error);
+      alert("Не вдалося оновити теги");
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col">
       <div className="mb-4">
@@ -357,7 +448,7 @@ const ContactsPage: React.FC = () => {
             <ContactList
               contacts={contacts}
               selectedContact={selectedContact}
-              onSelectContact={handleSelectContact} // ВИКОРИСТОВУЄМО НОВИЙ ОБРОБНИК
+              onSelectContact={handleSelectContact}
             />
           )}
         </div>
@@ -370,6 +461,12 @@ const ContactsPage: React.FC = () => {
               loading={messagesLoading}
               onSendMessage={handleSendMessage}
               onSendMedia={handleSendMedia}
+              // Передаємо нові пропси для тегів
+              availableTags={availableTags}
+              onUpdateTags={handleUpdateContactTags}
+              onCreateTag={handleCreateTag}
+              onDeleteTag={handleDeleteTag}
+              onEditTag={handleEditTag}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
