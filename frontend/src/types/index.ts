@@ -39,6 +39,13 @@ export enum MessageType {
 }
 
 // Contact Types
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+// Contact Types
 export interface Contact {
   id: string;
   phone_number: string;
@@ -47,7 +54,8 @@ export interface Contact {
   status: ContactStatus;
   last_message_at: string | null;
   source: string | null;
-  tags: string[] | null;
+  // ЗМІНА: tags тепер масив об'єктів Tag, а не рядків
+  tags: Tag[];
   created_at: string;
   updated_at: string;
   last_message_body?: string | null;
@@ -55,15 +63,16 @@ export interface Contact {
   last_message_direction?: MessageDirection | null;
 }
 
+// Для створення ми відправляємо ID тегів
 export interface ContactCreate {
   phone_number: string;
   name?: string | null;
-  tags?: string[];
+  tag_ids?: string[]; // Змінено з tags на tag_ids згідно з бекендом
 }
 
 export interface ContactUpdate {
   name?: string | null;
-  tags?: string[] | null;
+  tag_ids?: string[] | null; // Змінено з tags на tag_ids
 }
 
 export interface ContactImport {

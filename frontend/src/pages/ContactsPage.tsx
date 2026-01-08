@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom"; // ДОДАНО
 import { apiClient } from "../api";
 import {
   Contact,
@@ -12,6 +13,7 @@ import { useWSEvent } from "../services/useWebSocket";
 import { EventType } from "../services/websocket";
 
 const ContactsPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams(); // ДОДАНО
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<MessageResponse[]>([]);
@@ -23,6 +25,24 @@ const ContactsPage: React.FC = () => {
   useEffect(() => {
     loadContacts();
   }, []);
+
+  // ДОДАНО: Синхронізація URL -> State
+  // Коли завантажились контакти, перевіряємо чи є contact_id в URL
+  useEffect(() => {
+    const contactIdFromUrl = searchParams.get("contact_id");
+    if (contactIdFromUrl && contacts.length > 0 && !selectedContact) {
+      const contact = contacts.find((c) => c.id === contactIdFromUrl);
+      if (contact) {
+        setSelectedContact(contact);
+      }
+    }
+  }, [contacts, searchParams, selectedContact]);
+
+  // ДОДАНО: Обробник вибору контакту, який оновлює URL
+  const handleSelectContact = (contact: Contact) => {
+    setSelectedContact(contact);
+    setSearchParams({ contact_id: contact.id });
+  };
 
   // Коли обираємо контакт - завантажуємо повідомлення і скидаємо лічильник локально
   useEffect(() => {
@@ -282,9 +302,8 @@ const ContactsPage: React.FC = () => {
         phone,
         text,
         type: "text",
-        reply_to_message_id: replyToId, // Додано цей параметр
+        reply_to_message_id: replyToId,
       });
-      // Повідомлення додасться через WebSocket (handleNewMessage)
     } catch (error) {
       console.error("Помилка відправки повідомлення:", error);
       alert("Не вдалося відправити повідомлення");
@@ -298,8 +317,6 @@ const ContactsPage: React.FC = () => {
   ) => {
     try {
       await apiClient.sendMediaMessage(phone, file, caption);
-      // Повідомлення з'явиться через WebSocket, так само як і текстове
-      // Можна додати тост "Файл завантажується..."
     } catch (error) {
       console.error("Помилка відправки медіа:", error);
       alert("Не вдалося відправити файл");
@@ -340,7 +357,7 @@ const ContactsPage: React.FC = () => {
             <ContactList
               contacts={contacts}
               selectedContact={selectedContact}
-              onSelectContact={setSelectedContact}
+              onSelectContact={handleSelectContact} // ВИКОРИСТОВУЄМО НОВИЙ ОБРОБНИК
             />
           )}
         </div>

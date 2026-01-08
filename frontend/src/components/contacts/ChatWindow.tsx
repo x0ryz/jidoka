@@ -11,7 +11,6 @@ interface ChatWindowProps {
   messages: MessageResponse[];
   loading: boolean;
   onSendMessage: (phone: string, text: string, replyToId?: string) => void;
-  // Додаємо новий проп
   onSendMedia: (phone: string, file: File, caption?: string) => void;
 }
 
@@ -24,13 +23,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
   const [messageText, setMessageText] = useState("");
   const [replyTo, setReplyTo] = useState<MessageResponse | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null); // Стейт для файлу
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // Ref для інпуту файлу
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     scrollToBottom("auto");
-    setSelectedFile(null); // Скидаємо файл при зміні контакту
+    setSelectedFile(null);
     setMessageText("");
   }, [contact.id]);
 
@@ -46,13 +45,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleSend = () => {
     if (selectedFile) {
-      // Відправка медіа
       onSendMedia(contact.phone_number, selectedFile, messageText);
       setSelectedFile(null);
       setMessageText("");
       setReplyTo(null);
     } else if (messageText.trim()) {
-      // Відправка тексту
       onSendMessage(contact.phone_number, messageText, replyTo?.id);
       setMessageText("");
       setReplyTo(null);
@@ -111,12 +108,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <p className="text-sm text-gray-600">{contact.phone_number}</p>
         </div>
         <div className="flex gap-2">
-          {contact.tags?.map((tag, idx) => (
+          {/* ОНОВЛЕНО: Відображення тегів як об'єктів */}
+          {contact.tags?.map((tag) => (
             <span
-              key={idx}
-              className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full border border-gray-200"
+              key={tag.id}
+              className="text-xs px-2 py-1 rounded-full text-white"
+              style={{ backgroundColor: tag.color }}
             >
-              {tag}
+              {tag.name}
             </span>
           ))}
         </div>
@@ -314,7 +313,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             ref={fileInputRef}
             className="hidden"
             onChange={handleFileSelect}
-            // Можна додати accept="..." для обмеження типів
           />
 
           {/* Attachment Button */}
