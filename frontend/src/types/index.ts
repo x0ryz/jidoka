@@ -291,3 +291,27 @@ export interface WebhookVerifyParams {
   "hub.verify_token": string;
   "hub.challenge": string;
 }
+
+export interface WabaAccountStatus {
+  id: string;
+  waba_id: string;
+  name: string;
+  account_review_status: string | null;
+  business_verification_status: string | null;
+}
+
+export interface WabaPhoneStatus {
+  id: string;
+  waba_id: string;
+  phone_number_id: string;
+  display_phone_number: string;
+  status: string | null;
+  quality_rating: string;
+  messaging_limit_tier: string | null;
+  updated_at: string | null;
+}
+
+export interface WabaStatusResponse {
+  accounts: WabaAccountStatus[];
+  phone_numbers: WabaPhoneStatus[];
+}

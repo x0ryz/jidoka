@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import apiClient from "../api/client";
-import { DashboardStats, RecentActivity, MessagesTimeline } from "../types";
+import { DashboardStats, MessagesTimeline, WabaStatusResponse } from "../types";
 import {
   BarChart,
   Bar,
@@ -14,43 +14,85 @@ import {
 import {
   Users,
   MessageSquare,
-  Activity,
   TrendingUp,
-  Clock,
-  Send,
-  Inbox,
+  Smartphone,
+  RefreshCw,
 } from "lucide-react";
 
 const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [activity, setActivity] = useState<RecentActivity | null>(null);
   const [timeline, setTimeline] = useState<MessagesTimeline | null>(null);
+  const [wabaStatus, setWabaStatus] = useState<WabaStatusResponse | null>(null);
+
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Функція для завантаження всіх даних
+  const fetchDashboardData = async () => {
+    try {
+      if (!wabaStatus) setLoading(true);
+
+      const [statsData, timelineData, wabaData] = await Promise.all([
+        apiClient.getDashboardStats(),
+        apiClient.getMessagesTimeline(7),
+        apiClient.getWabaStatus(),
+      ]);
+
+      setStats(statsData);
+      setTimeline(timelineData);
+      setWabaStatus(wabaData);
+    } catch (err) {
+      console.error("Failed to fetch dashboard data:", err);
+      setError("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        const [statsData, activityData, timelineData] = await Promise.all([
-          apiClient.getDashboardStats(),
-          apiClient.getRecentActivity(10),
-          apiClient.getMessagesTimeline(7),
-        ]);
-
-        setStats(statsData);
-        setActivity(activityData);
-        setTimeline(timelineData);
-      } catch (err) {
-        console.error("Failed to fetch dashboard data:", err);
-        setError("Failed to load dashboard data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDashboardData();
   }, []);
+
+  // Обробник синхронізації WABA
+  const handleSync = async () => {
+    try {
+      setSyncing(true);
+      await apiClient.triggerWabaSync();
+      setTimeout(async () => {
+        await apiClient.getWabaStatus().then(setWabaStatus);
+        setSyncing(false);
+      }, 3000);
+    } catch (error) {
+      console.error("Failed to trigger sync:", error);
+      setSyncing(false);
+    }
+  };
+
+  const getStatusColor = (status: string | null) => {
+    if (!status) return "bg-gray-100 text-gray-800";
+    const lower = status.toLowerCase();
+    if (
+      lower.includes("connected") ||
+      lower.includes("verified") ||
+      lower.includes("approved")
+    ) {
+      return "bg-green-100 text-green-800";
+    }
+    if (lower.includes("pending")) return "bg-yellow-100 text-yellow-800";
+    if (lower.includes("rejected") || lower.includes("failed")) {
+      return "bg-red-100 text-red-800";
+    }
+    return "bg-gray-100 text-gray-800";
+  };
+
+  const getQualityColor = (rating: string) => {
+    const lower = rating.toLowerCase();
+    if (lower === "green") return "bg-green-100 text-green-800";
+    if (lower === "yellow") return "bg-yellow-100 text-yellow-800";
+    if (lower === "red") return "bg-red-100 text-red-800";
+    return "bg-gray-100 text-gray-800";
+  };
 
   if (loading) {
     return (
@@ -64,11 +106,10 @@ const DashboardPage: React.FC = () => {
     return <div className="text-red-500 p-4">{error}</div>;
   }
 
-  // ВИПРАВЛЕННЯ: прибрано зайвий клас p-6, залишено тільки space-y-6
+  const mainAccount = wabaStatus?.accounts[0];
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Contacts Card */}
@@ -105,20 +146,53 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Campaigns Card */}
+        {/* WABA Account Card */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">
-              Active Campaigns
-            </h3>
-            <Activity className="h-5 w-5 text-blue-500" />
+            <h3 className="text-gray-500 text-sm font-medium">WABA Account</h3>
+            {/* Кнопка синхронізації замість іконки Shield */}
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              title="Оновити статус WABA"
+              className={`p-1.5 rounded-md transition-all duration-200 ${
+                syncing
+                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                  : "text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 active:scale-95"
+              }`}
+            >
+              <RefreshCw
+                className={`w-5 h-5 ${syncing ? "animate-spin" : ""}`}
+              />
+            </button>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
-            {stats.campaigns.active}
-          </div>
-          <div className="mt-2 text-sm text-gray-600">
-            {stats.campaigns.completed} completed
-          </div>
+
+          {mainAccount ? (
+            <>
+              <div
+                className="text-lg font-bold text-gray-900 truncate"
+                title={mainAccount.name}
+              >
+                {mainAccount.name}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(mainAccount.account_review_status)}`}
+                >
+                  {mainAccount.account_review_status || "Review: N/A"}
+                </span>
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(mainAccount.business_verification_status)}`}
+                >
+                  {mainAccount.business_verification_status || "Verify: N/A"}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="text-sm text-gray-500 py-2">
+              No account connected
+            </div>
+          )}
         </div>
       </div>
 
@@ -166,104 +240,73 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Recent Activity Section */}
+        {/* Phone Numbers Section */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 flex flex-col h-full max-h-[460px]">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <Clock className="h-5 w-5 mr-2 text-gray-500" />
-            Recent Activity
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center justify-between">
+            <div className="flex items-center">
+              <Smartphone className="h-5 w-5 mr-2 text-gray-500" />
+              Phone Numbers
+            </div>
+            {wabaStatus?.phone_numbers && (
+              <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
+                {wabaStatus.phone_numbers.length}
+              </span>
+            )}
           </h2>
 
-          <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-            {/* Recent Campaigns List */}
-            {activity?.campaigns && activity.campaigns.length > 0 && (
-              <div className="mb-4">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Campaigns
-                </h3>
-                <ul className="space-y-3">
-                  {activity.campaigns.map((camp) => (
-                    <li
-                      key={camp.id}
-                      className="text-sm border-l-2 border-blue-500 pl-3 py-1"
-                    >
-                      <div
-                        className="font-medium text-gray-900 truncate"
-                        title={camp.name}
+          <div className="flex-1 overflow-y-auto pr-1 space-y-4 custom-scrollbar">
+            {wabaStatus?.phone_numbers &&
+            wabaStatus.phone_numbers.length > 0 ? (
+              <ul className="space-y-3">
+                {wabaStatus.phone_numbers.map((phone) => (
+                  <li
+                    key={phone.id}
+                    className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-indigo-100 transition-colors"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="font-semibold text-gray-900">
+                        {phone.display_phone_number}
+                      </div>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold ${getStatusColor(phone.status)}`}
                       >
-                        {camp.name}
-                      </div>
-                      <div className="text-xs text-gray-500 flex justify-between mt-1">
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] uppercase ${
-                            camp.status === "running"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {camp.status}
-                        </span>
-                        <span>
-                          {camp.sent_count}/{camp.total_contacts} sent
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+                        {phone.status || "UNK"}
+                      </span>
+                    </div>
 
-            {/* Recent Messages List */}
-            {activity?.messages && activity.messages.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Latest Messages
-                </h3>
-                <ul className="space-y-3">
-                  {activity.messages.map((msg) => (
-                    <li key={msg.id} className="flex items-start text-sm group">
-                      <div
-                        className={`mt-0.5 mr-3 p-1 rounded-full shrink-0 ${
-                          msg.direction === "outbound"
-                            ? "bg-indigo-100 text-indigo-600"
-                            : "bg-emerald-100 text-emerald-600"
-                        }`}
-                      >
-                        {msg.direction === "outbound" ? (
-                          <Send size={12} />
-                        ) : (
-                          <Inbox size={12} />
-                        )}
+                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                      <div>
+                        <span className="block text-[10px] uppercase tracking-wider text-gray-400">
+                          Quality
+                        </span>
+                        <span
+                          className={`inline-block mt-0.5 px-1.5 py-0.5 rounded font-medium ${getQualityColor(phone.quality_rating)}`}
+                        >
+                          {phone.quality_rating}
+                        </span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium text-gray-900 capitalize truncate">
-                            {msg.type}
-                          </span>
-                          <span className="text-xs text-gray-400 ml-2 whitespace-nowrap">
-                            {new Date(msg.created_at).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-500 capitalize flex justify-between">
-                          <span>
-                            Status:{" "}
-                            <span
-                              className={
-                                msg.status === "failed"
-                                  ? "text-red-500 font-medium"
-                                  : ""
-                              }
-                            >
-                              {msg.status}
-                            </span>
-                          </span>
-                        </div>
+                      <div className="text-right">
+                        <span className="block text-[10px] uppercase tracking-wider text-gray-400">
+                          Limit
+                        </span>
+                        <span className="font-medium text-gray-700 mt-0.5 block">
+                          {phone.messaging_limit_tier?.replace("_", " ") ||
+                            "N/A"}
+                        </span>
                       </div>
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+
+                    {phone.updated_at && (
+                      <div className="mt-2 pt-2 border-t border-gray-200 text-[10px] text-gray-400 text-right">
+                        Upd: {new Date(phone.updated_at).toLocaleDateString()}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                No phone numbers found
               </div>
             )}
           </div>
