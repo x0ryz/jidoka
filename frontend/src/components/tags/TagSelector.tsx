@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Tag, TagCreate, TagUpdate } from "../../types";
-import { Plus } from "lucide-react";
+import { Plus, Pencil, X as XIcon } from "lucide-react";
 
 interface TagSelectorProps {
   availableTags: Tag[];
@@ -287,7 +287,7 @@ const TagSelector: React.FC<TagSelectorProps> = ({
                     className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
                     title="Редагувати"
                   >
-                    ✎
+                    <Pencil className="w-4 h-4" />
                   </button>
                   <button
                     onClick={(e) => {
@@ -298,7 +298,7 @@ const TagSelector: React.FC<TagSelectorProps> = ({
                     className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                     title="Видалити"
                   >
-                    ×
+                    <XIcon className="w-4 h-4" />
                   </button>
                 </div>
               </div>

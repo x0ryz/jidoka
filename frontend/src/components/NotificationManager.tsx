@@ -2,6 +2,7 @@ import { useLocation, useSearchParams } from "react-router-dom";
 import toast, { Toaster } from "react-hot-toast";
 import { useWSEvent } from "../services/useWebSocket";
 import { EventType } from "../services/websocket";
+import { CheckCircle2, XCircle, AlertTriangle, TrendingDown, TrendingUp, Building2 } from "lucide-react";
 
 export const NotificationManager = () => {
   const location = useLocation();
@@ -44,7 +45,16 @@ export const NotificationManager = () => {
           <p className="text-xs text-gray-500 mt-1">{data.reason}</p>
         )}
       </div>,
-      { icon: isApproved ? "✅" : isRejected ? "❌" : "⚠️", duration: 5000 },
+      { 
+        icon: isApproved ? (
+          <CheckCircle2 className="w-5 h-5" />
+        ) : isRejected ? (
+          <XCircle className="w-5 h-5" />
+        ) : (
+          <AlertTriangle className="w-5 h-5" />
+        ), 
+        duration: 5000 
+      },
     );
   });
 
@@ -58,7 +68,7 @@ export const NotificationManager = () => {
         <p className="text-xs mt-1">Подія: {data.event}</p>
         <p className="text-xs">Ліміт: {data.messaging_limit_tier}</p>
       </div>,
-      { icon: isBad ? "📉" : "📈", duration: 5000 },
+      { icon: isBad ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />, duration: 5000 },
     );
   });
 
@@ -69,7 +79,7 @@ export const NotificationManager = () => {
         <p className="font-bold text-sm">WABA Акаунт</p>
         <p className="text-sm">Новий статус: {data.status}</p>
       </div>,
-      { icon: "🏢" },
+      { icon: <Building2 className="w-5 h-5" /> },
     );
   });
 
