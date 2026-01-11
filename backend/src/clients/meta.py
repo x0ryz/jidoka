@@ -31,10 +31,17 @@ class MetaClient:
         retry=retry_if_exception(is_transient_error),
         reraise=True,
     )
-    async def send_message(self, phone_id: str, data: dict):
+    async def send_message(
+        self, phone_id: str, data: dict, idempotency_key: str = None
+    ):
         """Send a message to a phone number using Meta Graph API."""
         url = f"{self.base_url}/{phone_id}/messages"
-        resp = await self.client.post(url, json=data)
+
+        headers = {}
+        if idempotency_key:
+            headers["X-Idempotency-Key"] = idempotency_key
+
+        resp = await self.client.post(url, json=data, headers=headers)
         resp.raise_for_status()
         return resp.json()
 

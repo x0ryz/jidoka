@@ -327,7 +327,7 @@ class MessageSenderService:
             )
 
             result = await self.meta_client.send_message(
-                waba_phone.phone_number_id, payload
+                waba_phone.phone_number_id, payload, idempotency_key=str(message.id)
             )
             wamid = result.get("messages", [{}])[0].get("id")
 
