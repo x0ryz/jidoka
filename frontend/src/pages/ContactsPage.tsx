@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Archive } from "lucide-react";
 import { apiClient } from "../api";
 import {
   Contact,
@@ -9,6 +10,7 @@ import {
   Tag,
   TagCreate,
   TagUpdate,
+  ContactStatus,
 } from "../types";
 import ContactList from "../components/contacts/ContactList";
 import ChatWindow from "../components/contacts/ChatWindow";
@@ -31,6 +33,7 @@ const ContactsPage: React.FC = () => {
   // Теги та фільтрація
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
 
   // --- Initial Load ---
   useEffect(() => {
@@ -45,7 +48,7 @@ const ContactsPage: React.FC = () => {
     if (!searchQuery) {
       loadContacts();
     }
-  }, [selectedFilterTags]);
+  }, [selectedFilterTags, showArchived]);
 
   // Синхронізація URL -> вибраний контакт
   useEffect(() => {
@@ -268,8 +271,14 @@ const ContactsPage: React.FC = () => {
   const loadContacts = async () => {
     try {
       setLoading(true);
-      // Передаємо selectedFilterTags у запит
-      const data = await apiClient.getContacts(50, 0, selectedFilterTags);
+      // Передаємо selectedFilterTags та status у запит
+      const status = showArchived ? ContactStatus.ARCHIVED : undefined;
+      const data = await apiClient.getContacts(
+        50,
+        0,
+        selectedFilterTags,
+        status,
+      );
       setContacts(Array.isArray(data) ? data : []);
     } catch (error: any) {
       console.error("Помилка завантаження контактів:", error);
@@ -464,19 +473,40 @@ const ContactsPage: React.FC = () => {
   };
 
   const handleContactUpdate = (updatedContact: Contact) => {
-    setContacts((prev) => 
-      prev.map(c => c.id === updatedContact.id ? updatedContact : c)
+    setContacts((prev) =>
+      prev.map((c) => {
+        if (c.id === updatedContact.id) {
+          // Merge updated contact with existing computed fields
+          return {
+            ...updatedContact,
+            last_message_body: c.last_message_body,
+            last_message_at: c.last_message_at,
+            last_message_status: c.last_message_status,
+            last_message_direction: c.last_message_direction,
+            unread_count: c.unread_count,
+          };
+        }
+        return c;
+      }),
     );
     if (selectedContact?.id === updatedContact.id) {
-      setSelectedContact(updatedContact);
+      // Also merge for selected contact
+      setSelectedContact({
+        ...updatedContact,
+        last_message_body: selectedContact.last_message_body,
+        last_message_at: selectedContact.last_message_at,
+        last_message_status: selectedContact.last_message_status,
+        last_message_direction: selectedContact.last_message_direction,
+        unread_count: selectedContact.unread_count,
+      });
     }
   };
 
   const handleContactDelete = (contactId: string) => {
-    setContacts((prev) => prev.filter(c => c.id !== contactId));
+    setContacts((prev) => prev.filter((c) => c.id !== contactId));
     if (selectedContact?.id === contactId) {
       setSelectedContact(null);
-      setSearchParams(params => {
+      setSearchParams((params) => {
         const newParams = new URLSearchParams(params);
         newParams.delete("contact_id");
         return newParams;
@@ -494,6 +524,23 @@ const ContactsPage: React.FC = () => {
             selectedTagIds={selectedFilterTags}
             onChange={setSelectedFilterTags}
           />
+
+          {/* Archive Toggle Button */}
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className={`p-2 rounded-lg border transition-colors ${
+              showArchived
+                ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+            }`}
+            title={
+              showArchived
+                ? "Показати активні контакти"
+                : "Показати архівовані контакти"
+            }
+          >
+            <Archive size={20} />
+          </button>
 
           <input
             type="text"
@@ -516,7 +563,9 @@ const ContactsPage: React.FC = () => {
         {/* Contact List Column */}
         <div className="w-1/3 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
           <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-gray-800">Контакти</h2>
+            <h2 className="text-lg font-semibold text-gray-800">
+              {showArchived ? "Архівовані контакти" : "Контакти"}
+            </h2>
             {contacts.length > 0 && !loading && (
               <span className="text-xs text-gray-400">
                 Всього: {contacts.length}

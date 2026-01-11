@@ -1,5 +1,15 @@
+// src/components/contacts/ContactActionsMenu.tsx
+
 import React, { useState, useRef, useEffect } from "react";
-import { MoreVertical, Tag, Ban, Archive, Trash2, Undo, Edit } from "lucide-react";
+import {
+  MoreVertical,
+  Tag,
+  Ban,
+  Archive,
+  Trash2,
+  Undo,
+  Edit,
+} from "lucide-react";
 import { Contact, ContactStatus } from "../../types";
 import { apiClient } from "../../api";
 
@@ -38,7 +48,9 @@ const ContactActionsMenu: React.FC<ContactActionsMenuProps> = ({
   const handleUpdateStatus = async (status: ContactStatus) => {
     try {
       setLoading(true);
-      const updatedContact = await apiClient.updateContact(contact.id, { status });
+      const updatedContact = await apiClient.updateContact(contact.id, {
+        status,
+      });
       onUpdate(updatedContact);
       setIsOpen(false);
     } catch (error) {
@@ -62,8 +74,13 @@ const ContactActionsMenu: React.FC<ContactActionsMenuProps> = ({
     }
   };
 
-  const isBlocked = contact.status === ContactStatus.BLOCKED;
-  const isArchived = contact.status === ContactStatus.ARCHIVED;
+  // Більш надійна перевірка статусу (на випадок розбіжностей у регістрі з БД)
+  const isBlocked =
+    contact.status === ContactStatus.BLOCKED ||
+    contact.status?.toString().toLowerCase() === "blocked";
+  const isArchived =
+    contact.status === ContactStatus.ARCHIVED ||
+    contact.status?.toString().toLowerCase() === "archived";
 
   return (
     <div className="relative" ref={menuRef}>
@@ -103,7 +120,11 @@ const ContactActionsMenu: React.FC<ContactActionsMenuProps> = ({
 
           {/* Block/Unblock */}
           <button
-            onClick={() => handleUpdateStatus(isBlocked ? ContactStatus.ACTIVE : ContactStatus.BLOCKED)}
+            onClick={() =>
+              handleUpdateStatus(
+                isBlocked ? ContactStatus.ACTIVE : ContactStatus.BLOCKED,
+              )
+            }
             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             disabled={loading}
           >
@@ -111,9 +132,13 @@ const ContactActionsMenu: React.FC<ContactActionsMenuProps> = ({
             {isBlocked ? "Розблокувати" : "Заблокувати"}
           </button>
 
-           {/* Archive/Unarchive */}
-           <button
-            onClick={() => handleUpdateStatus(isArchived ? ContactStatus.ACTIVE : ContactStatus.ARCHIVED)}
+          {/* Archive/Unarchive */}
+          <button
+            onClick={() =>
+              handleUpdateStatus(
+                isArchived ? ContactStatus.ACTIVE : ContactStatus.ARCHIVED,
+              )
+            }
             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             disabled={loading}
           >

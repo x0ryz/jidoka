@@ -86,12 +86,14 @@ export class ApiClient {
     limit = 50,
     offset = 0,
     tags?: string[],
+    status?: string,
   ): Promise<ContactListResponse[]> {
     const response = await this.client.get<ContactListResponse[]>("/contacts", {
       params: {
         limit,
         offset,
         tags,
+        status,
       },
     });
     return response.data;
