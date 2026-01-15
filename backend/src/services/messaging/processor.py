@@ -86,6 +86,9 @@ class MessageProcessorService:
                     )
 
                     if campaign_link:
+                        if campaign_link.status == CampaignDeliveryStatus.REPLIED:
+                            continue
+
                         if new_status == MessageStatus.DELIVERED:
                             if campaign_link.status not in [
                                 CampaignDeliveryStatus.READ,
@@ -98,6 +101,7 @@ class MessageProcessorService:
                             )
                             if campaign:
                                 campaign.delivered_count += 1
+                                campaign.sent_count -= 1
                                 self.uow.campaigns.add(campaign)
 
                         elif new_status == MessageStatus.READ:
@@ -107,6 +111,7 @@ class MessageProcessorService:
                             )
                             if campaign:
                                 campaign.read_count += 1
+                                campaign.delivered_count -= 1
                                 self.uow.campaigns.add(campaign)
 
                         elif new_status == MessageStatus.FAILED:
@@ -237,21 +242,35 @@ class MessageProcessorService:
                         latest_campaign_message.id
                     )
 
-                    if campaign_link and not getattr(
-                        campaign_link, "is_replied", False
+                    if (
+                        campaign_link
+                        and campaign_link.status != CampaignDeliveryStatus.REPLIED
                     ):
                         campaign = await self.uow.campaigns.get_by_id(
                             campaign_link.campaign_id
                         )
+
                         if campaign:
                             campaign.replied_count += 1
+
+                            if campaign_link.status == CampaignDeliveryStatus.READ:
+                                campaign.read_count = max(0, campaign.read_count - 1)
+                            elif (
+                                campaign_link.status == CampaignDeliveryStatus.DELIVERED
+                            ):
+                                campaign.delivered_count = max(
+                                    0, campaign.delivered_count - 1
+                                )
+                            elif campaign_link.status == CampaignDeliveryStatus.SENT:
+                                campaign.sent_count = max(0, campaign.sent_count - 1)
+
                             self.uow.campaigns.add(campaign)
 
-                            campaign_link.is_replied = True
+                            campaign_link.status = CampaignDeliveryStatus.REPLIED
                             self.uow.campaign_contacts.add(campaign_link)
 
                             logger.info(
-                                f"Incremented reply count for campaign {campaign.id} due to message from {msg.from_}"
+                                f"Campaign {campaign.id}: Contact {contact.phone_number} moved from {campaign_link.status} to REPLIED"
                             )
 
                 new_msg = await self.uow.messages.create(

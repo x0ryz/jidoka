@@ -116,6 +116,8 @@ export interface CampaignResponse {
   total_contacts: number;
   sent_count: number;
   delivered_count: number;
+  read_count: number;
+  replied_count: number;
   failed_count: number;
   created_at: string;
   updated_at: string;
@@ -142,6 +144,8 @@ export interface CampaignStats {
   total_contacts: number;
   sent_count: number;
   delivered_count: number;
+  read_count: number;
+  replied_count: number;
   failed_count: number;
   progress_percent: number;
   scheduled_at: string | null;
@@ -219,8 +223,7 @@ export interface HTTPValidationError {
   detail: ValidationError[];
 }
 
-// src/types/index.ts (додайте до існуючого файлу)
-
+// Dashboard
 export interface DashboardStats {
   contacts: {
     total: number;
@@ -269,7 +272,7 @@ export interface TimelinePoint {
 }
 
 export type MessagesTimeline = TimelinePoint[];
-// Query Parameters Types
+
 export interface PaginationParams {
   limit?: number;
   offset?: number;

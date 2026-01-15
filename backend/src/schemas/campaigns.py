@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasPath, BaseModel, ConfigDict, Field, computed_field
 from src.models.base import CampaignDeliveryStatus, CampaignStatus
 
 from .base import TimestampMixin, UUIDMixin
@@ -59,10 +59,20 @@ class CampaignResponse(UUIDMixin, TimestampMixin):
     scheduled_at: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+
     total_contacts: int
     sent_count: int
     delivered_count: int
+    read_count: int = 0
+    replied_count: int = 0
     failed_count: int
+
+    # Автоматичний розрахунок прогресу при серіалізації
+    @computed_field
+    def progress_percent(self) -> float:
+        if self.total_contacts == 0:
+            return 0.0
+        return round((self.sent_count / self.total_contacts) * 100, 2)
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -75,44 +85,9 @@ class CampaignResponse(UUIDMixin, TimestampMixin):
                 "total_contacts": 1000,
                 "sent_count": 750,
                 "delivered_count": 700,
+                "read_count": 500,
+                "replied_count": 50,
                 "failed_count": 50,
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-15T10:30:00Z",
-            }
-        },
-    )
-
-
-class CampaignStats(BaseModel):
-    """Detailed campaign statistics"""
-
-    id: UUID
-    name: str
-    status: CampaignStatus
-    total_contacts: int
-    sent_count: int
-    delivered_count: int
-    failed_count: int
-    progress_percent: float = Field(..., ge=0, le=100)
-    scheduled_at: datetime | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "id": "123e4567-e89b-12d3-a456-426614174000",
-                "name": "Black Friday",
-                "status": "running",
-                "total_contacts": 1000,
-                "sent_count": 750,
-                "delivered_count": 700,
-                "failed_count": 50,
-                "progress_percent": 75.0,
-                "started_at": "2024-01-15T09:00:00Z",
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": "2024-01-15T10:30:00Z",
             }
@@ -125,8 +100,10 @@ class CampaignContactResponse(BaseModel):
 
     id: UUID
     contact_id: UUID
-    phone_number: str
-    name: str | None = None
+    phone_number: str = Field(validation_alias=AliasPath("contact", "phone_number"))
+    name: str | None = Field(
+        default=None, validation_alias=AliasPath("contact", "name")
+    )
     status: CampaignDeliveryStatus
     error_message: str | None = None
     retry_count: int

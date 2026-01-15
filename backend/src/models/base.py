@@ -37,6 +37,7 @@ class CampaignDeliveryStatus(str, Enum):
     DELIVERED = "delivered"
     READ = "read"
     FAILED = "failed"
+    REPLIED = "replied"
 
 
 class CampaignStatus(str, Enum):
