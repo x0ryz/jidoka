@@ -3,6 +3,7 @@ import base64
 from loguru import logger
 from src.core.uow import UnitOfWork
 from src.models import (
+    CampaignDeliveryStatus,
     MessageDirection,
     MessageStatus,
     get_utc_now,
@@ -79,6 +80,40 @@ class MessageProcessorService:
                 if self._is_newer_status(db_message.status, new_status):
                     db_message.status = new_status
                     self.uow.messages.add(db_message)
+
+                    campaign_link = await self.uow.campaign_contacts.get_by_message_id(
+                        db_message.id
+                    )
+
+                    if campaign_link:
+                        if new_status == MessageStatus.DELIVERED:
+                            campaign_link.status = CampaignDeliveryStatus.DELIVERED
+                            campaign = await self.uow.campaigns.get_by_id(
+                                campaign_link.campaign_id
+                            )
+                            if campaign:
+                                campaign.delivered_count += 1
+                                self.uow.campaigns.add(campaign)
+
+                        elif new_status == MessageStatus.READ:
+                            campaign_link.status = CampaignDeliveryStatus.READ
+                            campaign = await self.uow.campaigns.get_by_id(
+                                campaign_link.campaign_id
+                            )
+                            if campaign:
+                                campaign.read_count += 1
+                                self.uow.campaigns.add(campaign)
+
+                        elif new_status == MessageStatus.FAILED:
+                            campaign_link.status = CampaignDeliveryStatus.FAILED
+                            campaign = await self.uow.campaigns.get_by_id(
+                                campaign_link.campaign_id
+                            )
+                            if campaign:
+                                campaign.failed_count += 1
+                                self.uow.campaigns.add(campaign)
+
+                        self.uow.campaign_contacts.add(campaign_link)
 
                     await self.notifier.notify_message_status(
                         message_id=db_message.id,
