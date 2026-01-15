@@ -156,3 +156,12 @@ class CampaignContactRepository(BaseRepository[CampaignContact]):
         stmt = select(func.count()).where(CampaignContact.campaign_id == campaign_id)
         result = await self.session.execute(stmt)
         return result.scalar() or 0
+
+    async def get_by_message_id(self, message_id: UUID) -> CampaignContact | None:
+        stmt = (
+            select(CampaignContact)
+            .where(CampaignContact.message_id == message_id)
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar()

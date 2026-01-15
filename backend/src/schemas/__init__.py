@@ -14,7 +14,6 @@ from .campaigns import (
     CampaignResponse,
     CampaignSchedule,
     CampaignStartResponse,
-    CampaignStats,
     CampaignUpdate,
 )
 
@@ -91,7 +90,6 @@ __all__ = [
     "CampaignCreate",
     "CampaignUpdate",
     "CampaignResponse",
-    "CampaignStats",
     "CampaignSchedule",
     "CampaignStartResponse",
     "CampaignContactResponse",

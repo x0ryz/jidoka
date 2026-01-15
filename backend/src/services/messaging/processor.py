@@ -3,6 +3,7 @@ import base64
 from loguru import logger
 from src.core.uow import UnitOfWork
 from src.models import (
+    CampaignDeliveryStatus,
     MessageDirection,
     MessageStatus,
     get_utc_now,
@@ -79,6 +80,50 @@ class MessageProcessorService:
                 if self._is_newer_status(db_message.status, new_status):
                     db_message.status = new_status
                     self.uow.messages.add(db_message)
+
+                    campaign_link = await self.uow.campaign_contacts.get_by_message_id(
+                        db_message.id
+                    )
+
+                    if campaign_link:
+                        if campaign_link.status == CampaignDeliveryStatus.REPLIED:
+                            continue
+
+                        if new_status == MessageStatus.DELIVERED:
+                            if campaign_link.status not in [
+                                CampaignDeliveryStatus.READ,
+                                CampaignDeliveryStatus.FAILED,
+                            ]:
+                                campaign_link.status = CampaignDeliveryStatus.DELIVERED
+
+                            campaign = await self.uow.campaigns.get_by_id(
+                                campaign_link.campaign_id
+                            )
+                            if campaign:
+                                campaign.delivered_count += 1
+                                campaign.sent_count -= 1
+                                self.uow.campaigns.add(campaign)
+
+                        elif new_status == MessageStatus.READ:
+                            campaign_link.status = CampaignDeliveryStatus.READ
+                            campaign = await self.uow.campaigns.get_by_id(
+                                campaign_link.campaign_id
+                            )
+                            if campaign:
+                                campaign.read_count += 1
+                                campaign.delivered_count -= 1
+                                self.uow.campaigns.add(campaign)
+
+                        elif new_status == MessageStatus.FAILED:
+                            campaign_link.status = CampaignDeliveryStatus.FAILED
+                            campaign = await self.uow.campaigns.get_by_id(
+                                campaign_link.campaign_id
+                            )
+                            if campaign:
+                                campaign.failed_count += 1
+                                self.uow.campaigns.add(campaign)
+
+                        self.uow.campaign_contacts.add(campaign_link)
 
                     await self.notifier.notify_message_status(
                         message_id=db_message.id,
@@ -185,10 +230,48 @@ class MessageProcessorService:
                         logger.info(
                             f"Linked reply to parent message UUID: {parent_msg.id}"
                         )
-                    else:
-                        logger.warning(
-                            f"Parent message with WAMID {ctx_wamid} not found. Reply link will be null."
+
+                latest_campaign_message = (
+                    await self.uow.messages.get_latest_campaign_message_for_contact(
+                        contact.id
+                    )
+                )
+
+                if latest_campaign_message:
+                    campaign_link = await self.uow.campaign_contacts.get_by_message_id(
+                        latest_campaign_message.id
+                    )
+
+                    if (
+                        campaign_link
+                        and campaign_link.status != CampaignDeliveryStatus.REPLIED
+                    ):
+                        campaign = await self.uow.campaigns.get_by_id(
+                            campaign_link.campaign_id
                         )
+
+                        if campaign:
+                            campaign.replied_count += 1
+
+                            if campaign_link.status == CampaignDeliveryStatus.READ:
+                                campaign.read_count = max(0, campaign.read_count - 1)
+                            elif (
+                                campaign_link.status == CampaignDeliveryStatus.DELIVERED
+                            ):
+                                campaign.delivered_count = max(
+                                    0, campaign.delivered_count - 1
+                                )
+                            elif campaign_link.status == CampaignDeliveryStatus.SENT:
+                                campaign.sent_count = max(0, campaign.sent_count - 1)
+
+                            self.uow.campaigns.add(campaign)
+
+                            campaign_link.status = CampaignDeliveryStatus.REPLIED
+                            self.uow.campaign_contacts.add(campaign_link)
+
+                            logger.info(
+                                f"Campaign {campaign.id}: Contact {contact.phone_number} moved from {campaign_link.status} to REPLIED"
+                            )
 
                 new_msg = await self.uow.messages.create(
                     waba_phone_id=waba_phone_db_id,

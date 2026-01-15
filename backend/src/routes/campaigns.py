@@ -11,7 +11,6 @@ from src.schemas import (
     CampaignCreate,
     CampaignResponse,
     CampaignSchedule,
-    CampaignStats,
     CampaignUpdate,
     ContactImport,
     ContactImportResult,
@@ -67,6 +66,10 @@ async def list_campaigns(
     status: CampaignStatus | None = None,
     uow: UnitOfWork = Depends(get_uow),
 ):
+    """
+    List campaigns.
+    Progress percent will be automatically calculated for each item.
+    """
     async with uow:
         campaigns = await uow.campaigns.list_with_status(status=status)
         return campaigns
@@ -240,35 +243,23 @@ async def resume_campaign(
         return campaign
 
 
-@router.get("/{campaign_id}/stats", response_model=CampaignStats)
+# Оновлений ендпоінт, тепер повертає CampaignResponse
+@router.get("/{campaign_id}/stats", response_model=CampaignResponse)
 async def get_campaign_stats(
     campaign_id: UUID,
     uow: UnitOfWork = Depends(get_uow),
 ):
+    """
+    Get detailed campaign statistics.
+    Actually now returns the same as get_campaign because stats are included.
+    """
     async with uow:
         campaign = await uow.campaigns.get_by_id(campaign_id)
         if not campaign:
             raise NotFoundError(detail="Campaign not found")
 
-        progress = 0.0
-        if campaign.total_contacts > 0:
-            progress = (campaign.sent_count / campaign.total_contacts) * 100
-
-        return CampaignStats(
-            id=campaign.id,
-            name=campaign.name,
-            status=campaign.status,
-            total_contacts=campaign.total_contacts,
-            sent_count=campaign.sent_count,
-            delivered_count=campaign.delivered_count,
-            failed_count=campaign.failed_count,
-            progress_percent=round(progress, 2),
-            scheduled_at=campaign.scheduled_at,
-            started_at=campaign.started_at,
-            completed_at=campaign.completed_at,
-            created_at=campaign.created_at,
-            updated_at=campaign.updated_at,
-        )
+        # Pydantic computed_field will handle progress_percent
+        return campaign
 
 
 @router.get("/{campaign_id}/contacts", response_model=list[CampaignContactResponse])
@@ -286,22 +277,7 @@ async def get_campaign_contacts(
         links = await uow.campaign_contacts.get_campaign_contacts(
             campaign_id, limit, offset
         )
-
-        result = []
-        for link in links:
-            result.append(
-                CampaignContactResponse(
-                    id=link.id,
-                    contact_id=link.contact_id,
-                    phone_number=link.contact.phone_number,
-                    name=link.contact.name,
-                    status=link.status,
-                    error_message=link.error_message,
-                    retry_count=link.retry_count,
-                )
-            )
-
-        return result
+        return links  # Pydantic from_attributes=True handled in schema
 
 
 @router.post("/{campaign_id}/contacts/import", response_model=ContactImportResult)
@@ -311,10 +287,7 @@ async def import_contacts_from_file(
     uow: UnitOfWork = Depends(get_uow),
     import_service: ContactImportService = Depends(get_contact_import_service),
 ):
-    """
-    Import contacts from CSV or Excel file.
-    Uses unified pandas importer.
-    """
+    """Import contacts from CSV or Excel file."""
     async with uow:
         campaign = await uow.campaigns.get_by_id(campaign_id)
         if not campaign:
@@ -326,11 +299,8 @@ async def import_contacts_from_file(
             )
 
         content = await file.read()
-
-        # ВИПРАВЛЕНО: Виклик універсального методу import_file
         result = await import_service.import_file(campaign_id, content, file.filename)
 
-        # Якщо файл не підтримався, сервіс поверне помилку в result.errors
         if result.errors and any("Unsupported file format" in e for e in result.errors):
             raise BadRequestError(
                 detail="Unsupported file format. Use .csv, .xlsx or .xls"

@@ -47,8 +47,8 @@ class Campaign(Base, UUIDMixin, TimestampMixin):
     sent_count: Mapped[int] = mapped_column(default=0)
     delivered_count: Mapped[int] = mapped_column(default=0)
     failed_count: Mapped[int] = mapped_column(default=0)
-
-    # Використовуємо list[...] замість List[...]
+    read_count: Mapped[int] = mapped_column(default=0)
+    replied_count: Mapped[int] = mapped_column(default=0)
     template: Mapped["Template | None"] = relationship(back_populates="campaigns")
     contacts: Mapped[list["CampaignContact"]] = relationship(
         back_populates="campaign", cascade="all, delete-orphan"

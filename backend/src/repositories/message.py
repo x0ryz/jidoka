@@ -91,3 +91,21 @@ class MessageRepository(BaseRepository[Message]):
         stmt = select(Message).where(Message.created_at >= timestamp)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_latest_campaign_message_for_contact(
+        self, contact_id: UUID
+    ) -> Message | None:
+        stmt = (
+            select(Message)
+            .where(
+                Message.contact_id == contact_id,
+                Message.direction == MessageDirection.OUTBOUND,
+                Message.status.in_(
+                    [MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ]
+                ),
+            )
+            .order_by(desc(Message.created_at))
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar()
