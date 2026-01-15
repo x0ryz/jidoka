@@ -1,22 +1,30 @@
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from src.core.database import Base
+from src.models.base import UUIDMixin
+
+if TYPE_CHECKING:
+    from src.models.contacts import Contact
 
 
-class ContactTagLink(SQLModel, table=True):
+class ContactTagLink(Base):
     __tablename__ = "contact_tags"
 
-    contact_id: UUID = Field(foreign_key="contacts.id", primary_key=True)
-    tag_id: UUID = Field(foreign_key="tags.id", primary_key=True)
+    contact_id: Mapped[UUID] = mapped_column(
+        ForeignKey("contacts.id"), primary_key=True
+    )
+    tag_id: Mapped[UUID] = mapped_column(ForeignKey("tags.id"), primary_key=True)
 
 
-class Tag(SQLModel, table=True):
+class Tag(Base, UUIDMixin):
     __tablename__ = "tags"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    name: str = Field(unique=True, index=True)
-    color: str = Field(default="#808080")
+    name: Mapped[str] = mapped_column(String, unique=True, index=True)
+    color: Mapped[str] = mapped_column(String, default="#808080")
 
-    contacts: list["Contact"] = Relationship(
-        back_populates="tags", link_model=ContactTagLink
+    contacts: Mapped[list["Contact"]] = relationship(
+        secondary="contact_tags", back_populates="tags"
     )

@@ -1,4 +1,3 @@
-from typing import Sequence
 from uuid import UUID
 
 from sqlalchemy import select
@@ -15,20 +14,20 @@ class TagRepository:
         self.session.add(tag)
         return tag
 
-    async def get_all(self) -> Sequence[Tag]:
+    async def get_all(self) -> list[Tag]:
         query = select(Tag).order_by(Tag.name)
         result = await self.session.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def get_by_id(self, tag_id: UUID) -> Tag | None:
         return await self.session.get(Tag, tag_id)
 
-    async def get_by_ids(self, tag_ids: list[UUID]) -> Sequence[Tag]:
+    async def get_by_ids(self, tag_ids: list[UUID]) -> list[Tag]:
         if not tag_ids:
             return []
         query = select(Tag).where(Tag.id.in_(tag_ids))
         result = await self.session.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
     async def delete(self, tag_id: UUID) -> None:
         tag = await self.get_by_id(tag_id)

@@ -2,13 +2,13 @@ from typing import AsyncGenerator
 
 import httpx
 from fastapi import Depends
-
 from src.clients.meta import MetaClient
 from src.core.config import settings
 from src.core.database import async_session_maker
 from src.core.uow import UnitOfWork
 from src.services.campaign.importer import ContactImportService
 from src.services.campaign.sender import CampaignSenderService
+from src.services.dashboard import DashboardService
 from src.services.media.service import MediaService
 from src.services.media.storage import StorageService
 from src.services.messaging.chat import ChatService
@@ -45,12 +45,12 @@ def get_notification_service() -> NotificationService:
     return NotificationService()
 
 
-async def get_sync_service(
+def get_sync_service(
+    uow: UnitOfWork = Depends(get_uow),
     meta_client: MetaClient = Depends(get_meta_client),
-) -> AsyncGenerator[SyncService, None]:
+) -> SyncService:
     """Get service for syncing WABA data from Meta."""
-    async with async_session_maker() as session:
-        yield SyncService(session=session, meta_client=meta_client)
+    return SyncService(uow=uow, meta_client=meta_client)
 
 
 def get_media_service(
@@ -112,3 +112,10 @@ def get_campaign_sender_service(
     return CampaignSenderService(
         uow=uow, message_sender=message_sender, notifier=notifier
     )
+
+
+def get_dashboard_service(
+    uow: UnitOfWork = Depends(get_uow),
+) -> DashboardService:
+    """Get service for dashboard statistics."""
+    return DashboardService(uow=uow)

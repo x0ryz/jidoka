@@ -1,6 +1,6 @@
 from typing import Callable
 
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from src.repositories.campaign import CampaignContactRepository, CampaignRepository
 from src.repositories.contact import ContactRepository
 from src.repositories.message import MessageRepository
@@ -28,6 +28,9 @@ class UnitOfWork:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if not self.session:
+            return
+
         try:
             if exc_type:
                 await self.rollback()
@@ -38,8 +41,10 @@ class UnitOfWork:
 
     async def commit(self):
         """Manually commit changes"""
-        await self.session.commit()
+        if self.session:
+            await self.session.commit()
 
     async def rollback(self):
         """Manually rollback changes"""
-        await self.session.rollback()
+        if self.session:
+            await self.session.rollback()

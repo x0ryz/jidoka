@@ -1,80 +1,76 @@
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
-
-from .base import CampaignDeliveryStatus, CampaignStatus, get_utc_now
+from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from src.core.database import Base
+from src.models.base import (
+    CampaignDeliveryStatus,
+    CampaignStatus,
+    TimestampMixin,
+    UUIDMixin,
+)
 
 if TYPE_CHECKING:
-    from .contacts import Contact
-    from .messages import Message
-    from .templates import Template
+    from src.models.contacts import Contact
+    from src.models.messages import Message
+    from src.models.templates import Template
 
 
-class Campaign(SQLModel, table=True):
+class Campaign(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "campaigns"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    name: str
-    status: CampaignStatus = Field(default=CampaignStatus.DRAFT, index=True)
-
-    message_type: str = Field(default="template")
-    template_id: Optional[UUID] = Field(default=None, foreign_key="templates.id")
-    message_body: Optional[str] = None
-
-    scheduled_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
-    )
-    started_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
-    )
-    completed_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
+    # Використовуємо str | None замість Optional[str]
+    name: Mapped[str] = mapped_column(String)
+    status: Mapped[CampaignStatus] = mapped_column(
+        default=CampaignStatus.DRAFT, index=True
     )
 
-    total_contacts: int = Field(default=0)
-    sent_count: int = Field(default=0)
-    delivered_count: int = Field(default=0)
-    failed_count: int = Field(default=0)
-
-    created_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    message_type: Mapped[str] = mapped_column(default="template")
+    template_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("templates.id"), nullable=True
     )
-    updated_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    message_body: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
-    template: Optional["Template"] = Relationship(back_populates="campaigns")
-    contacts: List["CampaignContact"] = Relationship(
-        back_populates="campaign",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    total_contacts: Mapped[int] = mapped_column(default=0)
+    sent_count: Mapped[int] = mapped_column(default=0)
+    delivered_count: Mapped[int] = mapped_column(default=0)
+    failed_count: Mapped[int] = mapped_column(default=0)
+
+    # Використовуємо list[...] замість List[...]
+    template: Mapped["Template | None"] = relationship(back_populates="campaigns")
+    contacts: Mapped[list["CampaignContact"]] = relationship(
+        back_populates="campaign", cascade="all, delete-orphan"
     )
 
 
-class CampaignContact(SQLModel, table=True):
+class CampaignContact(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "campaign_contacts"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    campaign_id: Mapped[UUID] = mapped_column(ForeignKey("campaigns.id"), index=True)
+    contact_id: Mapped[UUID] = mapped_column(ForeignKey("contacts.id"), index=True)
 
-    campaign_id: UUID = Field(foreign_key="campaigns.id", index=True)
-    contact_id: UUID = Field(foreign_key="contacts.id", index=True)
-
-    status: CampaignDeliveryStatus = Field(
+    status: Mapped[CampaignDeliveryStatus] = mapped_column(
         default=CampaignDeliveryStatus.QUEUED, index=True
     )
-    message_id: Optional[UUID] = Field(default=None, foreign_key="messages.id")
-
-    error_message: Optional[str] = None
-    retry_count: int = Field(default=0)
-
-    created_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
-    )
-    updated_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id"), nullable=True
     )
 
-    campaign: Optional[Campaign] = Relationship(back_populates="contacts")
-    contact: Optional["Contact"] = Relationship(back_populates="campaign_links")
-    message: Optional["Message"] = Relationship()
+    error_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    retry_count: Mapped[int] = mapped_column(default=0)
+
+    campaign: Mapped["Campaign"] = relationship(back_populates="contacts")
+    contact: Mapped["Contact"] = relationship(back_populates="campaign_links")
+    message: Mapped["Message | None"] = relationship()

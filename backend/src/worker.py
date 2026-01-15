@@ -42,12 +42,10 @@ async def get_http_client(context: Context = TaskiqDepends()) -> httpx.AsyncClie
 async def handle_messages_task(
     message: WhatsAppMessage, client: httpx.AsyncClient = TaskiqDepends(get_http_client)
 ):
-    """Handle individual WhatsApp message requests (API endpoint)"""
     async with limiter:
         with logger.contextualize(request_id=message.request_id):
             uow = UnitOfWork(async_session_maker)
             meta_client = MetaClient(client)
-
             notifier = NotificationService()
             sender_service = MessageSenderService(uow, meta_client, notifier)
 
@@ -66,14 +64,9 @@ async def handle_media_send_task(
     filename: str,
     mime_type: str,
     caption: str | None = None,
-    request_id: str = None,
+    request_id: str | None = None,
     client: httpx.AsyncClient = TaskiqDepends(get_http_client),
 ):
-    """
-    Handle media message sending (from API endpoint).
-
-    This task processes the complete media upload and send workflow.
-    """
     async with limiter:
         with logger.contextualize(request_id=request_id or str(uuid.uuid4())):
             try:
@@ -90,11 +83,9 @@ async def handle_media_send_task(
                     logger.error(f"File not found at {file_path}")
                     return
 
-                # Read the file bytes inside the worker
                 async with aiofiles.open(file_path, "rb") as f:
                     file_bytes = await f.read()
 
-                # Send media message
                 await sender_service.send_media_message(
                     phone_number=phone_number,
                     file_bytes=file_bytes,
@@ -104,8 +95,7 @@ async def handle_media_send_task(
                 )
 
                 logger.info(
-                    f"Media message sent successfully to {phone_number}. "
-                    f"File: {filename}"
+                    f"Media message sent successfully to {phone_number}. File: {filename}"
                 )
             except Exception as e:
                 logger.error(f"Error sending media: {e}")
@@ -113,19 +103,18 @@ async def handle_media_send_task(
             finally:
                 if os.path.exists(file_path):
                     os.remove(file_path)
-                    logger.debug(f"Cleaned up temp file: {file_path}")
 
 
 @broker.task(task_name="sync_account_data")
 async def handle_account_sync_task(
     message: WabaSyncRequest, client: httpx.AsyncClient = TaskiqDepends(get_http_client)
 ):
-    """Handle WABA account sync requests"""
     with logger.contextualize(request_id=message.request_id):
-        async with async_session_maker() as session:
-            meta_client = MetaClient(client)
-            sync_service = SyncService(session, meta_client)
-            await sync_service.sync_account_data()
+        uow = UnitOfWork(async_session_maker)
+        meta_client = MetaClient(client)
+
+        sync_service = SyncService(uow, meta_client)
+        await sync_service.sync_account_data()
 
 
 @broker.task(
@@ -139,44 +128,31 @@ async def handle_media_download_task(
     caption: str | None = None,
     client: httpx.AsyncClient = TaskiqDepends(get_http_client),
 ):
-    """
-    Background task for downloading media from Meta to R2.
-    Uses streaming to avoid memory issues with large files.
-    """
     with logger.contextualize(message_id=str(message_id), media_id=meta_media_id):
         uow = UnitOfWork(async_session_maker)
         meta_client = MetaClient(client)
         storage_service = StorageService()
 
         try:
-            # Get temporary URL from Meta
             media_url = await meta_client.get_media_url(meta_media_id)
 
-            # Generate R2 path
             ext = mimetypes.guess_extension(mime_type) or ".bin"
             filename = f"{uuid.uuid4()}{ext}"
             r2_key = f"whatsapp/{media_type}s/{filename}"
 
             logger.info(f"Starting stream download for {media_type}: {r2_key}")
 
-            # Stream download and upload to R2
             async with client.stream("GET", media_url) as response:
                 response.raise_for_status()
-
-                # Get file size from headers
                 file_size = int(response.headers.get("content-length", 0))
-
-                # Wrap iterator in file-like object
                 file_stream = AsyncIteratorFile(response.aiter_bytes())
 
-                # Upload to R2
                 await storage_service.upload_stream(
                     file_stream=file_stream,
                     object_name=r2_key,
                     content_type=mime_type,
                 )
 
-            # Save metadata to DB
             async with uow:
                 await uow.messages.add_media_file(
                     message_id=message_id,
@@ -203,7 +179,6 @@ async def handle_media_download_task(
 async def handle_raw_webhook_task(
     event: WebhookEvent, client: httpx.AsyncClient = TaskiqDepends(get_http_client)
 ):
-    """Handle incoming webhooks from Meta"""
     data = event.payload
 
     async with async_session_maker() as session:
@@ -216,7 +191,6 @@ async def handle_raw_webhook_task(
 
     uow = UnitOfWork(async_session_maker)
     meta_client = MetaClient(client)
-
     storage_service = StorageService()
     notifier = NotificationService()
     media_service = MediaService(uow, storage_service, meta_client)
@@ -233,16 +207,13 @@ async def process_campaign_batch_task(
     batch_number: int = 1,
     client: httpx.AsyncClient = TaskiqDepends(get_http_client),
 ):
-    """Process a batch of contacts."""
     BATCH_SIZE = 100
     PROGRESS_UPDATE_INTERVAL = 10
 
     uow = UnitOfWork(async_session_maker)
     meta_client = MetaClient(client)
-
     notifier = NotificationService()
     message_sender = MessageSenderService(uow, meta_client, notifier)
-
     sender = CampaignSenderService(uow, message_sender, notifier)
 
     async with uow:
@@ -306,7 +277,6 @@ async def handle_campaign_start_task(
         try:
             uow = UnitOfWork(async_session_maker)
             meta_client = MetaClient(client)
-
             notifier = NotificationService()
             message_sender = MessageSenderService(uow, meta_client, notifier)
             sender = CampaignSenderService(uow, message_sender, notifier)
@@ -330,7 +300,6 @@ async def handle_campaign_resume_task(
         try:
             uow = UnitOfWork(async_session_maker)
             meta_client = MetaClient(client)
-
             notifier = NotificationService()
             message_sender = MessageSenderService(uow, meta_client, notifier)
             sender = CampaignSenderService(uow, message_sender, notifier)

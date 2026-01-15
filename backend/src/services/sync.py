@@ -1,117 +1,81 @@
 from loguru import logger
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 from src.clients.meta import MetaClient
+from src.core.uow import UnitOfWork
 from src.models import Template, WabaAccount, WabaPhoneNumber, get_utc_now
 
 
 class SyncService:
-    """
-    Service for syncing WABA data from Meta.
-
-    Responsibilities:
-    - Sync account information
-    - Sync phone numbers
-    - Sync message templates
-    """
-
-    def __init__(self, session: AsyncSession, meta_client: MetaClient):
-        self.session = session
+    def __init__(self, uow: UnitOfWork, meta_client: MetaClient):
+        self.uow = uow
         self.meta_client = meta_client
 
     async def sync_account_data(self):
-        """
-        Sync all WABA data from Meta.
+        async with self.uow:
+            waba_account = await self.uow.waba.get_account()
+            if not waba_account:
+                logger.warning("No WABA accounts found in the database.")
+                return
 
-        Syncs:
-        1. Account information
-        2. Phone numbers
-        3. Message templates
-        """
-        waba_account = await self._get_waba_account()
-        if not waba_account:
-            logger.warning("No WABA accounts found in the database.")
-            return
+            logger.info(f"Syncing WABA account ID: {waba_account.waba_id}")
 
-        logger.info(f"Syncing WABA account ID: {waba_account.waba_id}")
+            try:
+                await self._sync_account_info(waba_account)
+                await self._sync_phone_numbers(waba_account)
+                await self._sync_templates(waba_account)
 
-        try:
-            # Sync account info
-            await self._sync_account_info(waba_account)
+                await self.uow.commit()
+                logger.success(f"Synced account '{waba_account.name}' successfully")
 
-            # Sync phone numbers
-            await self._sync_phone_numbers(waba_account)
-
-            # Sync templates
-            await self._sync_templates(waba_account)
-
-            logger.success(f"Synced account '{waba_account.name}' successfully")
-
-        except Exception as e:
-            logger.exception(f"Failed to sync WABA ID {waba_account.waba_id}")
-            raise
-
-    async def _get_waba_account(self) -> WabaAccount | None:
-        """Get the first WABA account from database."""
-        stmt = select(WabaAccount)
-        result = await self.session.exec(stmt)
-        return result.first()
+            except Exception:
+                logger.exception(f"Failed to sync WABA ID {waba_account.waba_id}")
+                raise
 
     async def _sync_account_info(self, waba_account: WabaAccount):
-        """Sync account information from Meta."""
         account_info = await self.meta_client.fetch_account_info(waba_account.waba_id)
 
-        waba_account.name = account_info.get("name")
+        waba_account.name = str(account_info.get("name", ""))
         waba_account.account_review_status = account_info.get("account_review_status")
         waba_account.business_verification_status = account_info.get(
             "business_verification_status"
         )
 
-        self.session.add(waba_account)
-        await self.session.commit()
-        await self.session.refresh(waba_account)
+        self.uow.waba.add(waba_account)
+
+        assert self.uow.session is not None
+        await self.uow.session.flush()
 
     async def _sync_phone_numbers(self, waba_account: WabaAccount):
-        """Sync phone numbers from Meta."""
         phones_data = await self.meta_client.fetch_phone_numbers(waba_account.waba_id)
 
         for item in phones_data.get("data", []):
             await self._upsert_phone_number(waba_account.id, item)
 
-        await self.session.commit()
-
     async def _upsert_phone_number(self, waba_db_id, item: dict):
-        """Create or update a phone number."""
         phone_id = item.get("id")
+        if not phone_id:
+            return
 
-        # Check if exists
-        stmt = select(WabaPhoneNumber).where(
-            WabaPhoneNumber.phone_number_id == phone_id
-        )
-        result = await self.session.exec(stmt)
-        phone_obj = result.first()
+        phone_obj = await self.uow.waba.get_by_phone_id(phone_id)
 
         if not phone_obj:
-            # Create new
             phone_obj = WabaPhoneNumber(
                 waba_id=waba_db_id,
                 phone_number_id=phone_id,
-                display_phone_number=item.get("display_phone_number"),
+                display_phone_number=str(item.get("display_phone_number", "")),
                 status=item.get("code_verification_status"),
-                quality_rating=item.get("quality_rating", "UNKNOWN"),
+                quality_rating=str(item.get("quality_rating", "UNKNOWN")),
                 messaging_limit_tier=item.get("messaging_limit_tier"),
             )
         else:
-            # Update existing
             phone_obj.status = item.get("code_verification_status")
-            phone_obj.quality_rating = item.get("quality_rating", "UNKNOWN")
+            phone_obj.quality_rating = str(item.get("quality_rating", "UNKNOWN"))
             phone_obj.messaging_limit_tier = item.get("messaging_limit_tier")
             phone_obj.updated_at = get_utc_now()
 
-        self.session.add(phone_obj)
+        assert self.uow.session is not None
+        self.uow.session.add(phone_obj)
 
     async def _sync_templates(self, waba_account: WabaAccount):
-        """Sync message templates from Meta."""
         logger.info(f"Syncing templates for WABA: {waba_account.name}")
 
         try:
@@ -120,37 +84,34 @@ class SyncService:
             for item in data.get("data", []):
                 await self._upsert_template(waba_account.id, item)
 
-            await self.session.commit()
             logger.success("Templates synced successfully")
-
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to sync templates")
             raise
 
     async def _upsert_template(self, waba_id, item: dict):
-        """Create or update a template."""
         meta_id = item.get("id")
+        if not meta_id:
+            return
 
-        # Check if exists
-        stmt = select(Template).where(Template.meta_template_id == meta_id)
-        result = await self.session.exec(stmt)
-        existing = result.first()
+        existing = await self.uow.templates.get_by_meta_id(meta_id)
+
+        status = str(item.get("status", "UNKNOWN"))
+        components = item.get("components", [])
 
         if not existing:
-            # Create new
             existing = Template(
                 waba_id=waba_id,
                 meta_template_id=meta_id,
-                name=item.get("name"),
-                language=item.get("language"),
-                status=item.get("status"),
-                category=item.get("category"),
-                components=item.get("components", []),
+                name=str(item.get("name", "")),
+                language=str(item.get("language", "")),
+                status=status,
+                category=str(item.get("category", "")),
+                components=components,
             )
         else:
-            # Update existing
-            existing.status = item.get("status")
-            existing.components = item.get("components", [])
+            existing.status = status
+            existing.components = components
             existing.updated_at = get_utc_now()
 
-        self.session.add(existing)
+        self.uow.templates.add(existing)

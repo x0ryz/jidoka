@@ -1,38 +1,29 @@
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
-
-from .base import get_utc_now
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from src.core.database import Base
+from src.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from .campaigns import Campaign
-    from .waba import WabaAccount
+    from src.models.campaigns import Campaign
+    from src.models.waba import WabaAccount
 
 
-class Template(SQLModel, table=True):
+class Template(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "templates"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    waba_id: Mapped[UUID] = mapped_column(ForeignKey("waba_accounts.id"))
+    waba: Mapped["WabaAccount | None"] = relationship(back_populates="templates")
 
-    waba_id: UUID = Field(foreign_key="waba_accounts.id")
-    waba: Optional["WabaAccount"] = Relationship(back_populates="templates")
+    meta_template_id: Mapped[str] = mapped_column(String, index=True, unique=True)
+    name: Mapped[str] = mapped_column(String, index=True)
+    language: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String)
+    category: Mapped[str] = mapped_column(String)
 
-    meta_template_id: str = Field(index=True, unique=True)
-    name: str = Field(index=True)
-    language: str
-    status: str
-    category: str
+    components: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
 
-    components: List[Dict[str, Any]] = Field(default=[], sa_column=Column(JSONB))
-
-    created_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
-    )
-    updated_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
-    )
-
-    campaigns: List["Campaign"] = Relationship(back_populates="template")
+    campaigns: Mapped[list["Campaign"]] = relationship(back_populates="template")

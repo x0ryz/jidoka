@@ -1,14 +1,15 @@
-from typing import Generic, Type, TypeVar
+from typing import Generic, TypeVar
 from uuid import UUID
 
-from sqlmodel import SQLModel, select
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from src.core.database import Base
 
-ModelType = TypeVar("ModelType", bound=SQLModel)
+ModelType = TypeVar("ModelType", bound=Base)
 
 
 class BaseRepository(Generic[ModelType]):
-    def __init__(self, session: AsyncSession, model: Type[ModelType]):
+    def __init__(self, session: AsyncSession, model: type[ModelType]):
         self.session = session
         self.model = model
 
@@ -17,7 +18,8 @@ class BaseRepository(Generic[ModelType]):
 
     async def get_all(self) -> list[ModelType]:
         stmt = select(self.model)
-        return (await self.session.exec(stmt)).all()
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     def add(self, obj: ModelType) -> ModelType:
         self.session.add(obj)

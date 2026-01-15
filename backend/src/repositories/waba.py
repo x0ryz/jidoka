@@ -1,4 +1,4 @@
-from sqlmodel import select
+from sqlalchemy import select
 from src.models import WabaAccount, WabaPhoneNumber
 from src.repositories.base import BaseRepository
 
@@ -8,16 +8,38 @@ class WabaRepository(BaseRepository[WabaAccount]):
         super().__init__(session, WabaAccount)
 
     async def get_account(self) -> WabaAccount | None:
-        """Отримує єдиний WABA акаунт, якщо він існує."""
         stmt = select(WabaAccount).limit(1)
-        return (await self.session.exec(stmt)).first()
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
 
     async def get_default_phone(self) -> WabaPhoneNumber | None:
-        stmt = select(WabaPhoneNumber)
-        return (await self.session.exec(stmt)).first()
+        stmt = select(WabaPhoneNumber).limit(1)
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
 
     async def get_by_phone_id(self, phone_number_id: str) -> WabaPhoneNumber | None:
         stmt = select(WabaPhoneNumber).where(
             WabaPhoneNumber.phone_number_id == phone_number_id
         )
-        return (await self.session.exec(stmt)).first()
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def get_by_waba_id(self, waba_id: str) -> WabaAccount | None:
+        stmt = select(WabaAccount).where(WabaAccount.waba_id == waba_id)
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def get_by_display_phone(self, phone: str) -> WabaPhoneNumber | None:
+        stmt = select(WabaPhoneNumber).where(
+            WabaPhoneNumber.display_phone_number == phone
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def get_all_accounts(self) -> list[WabaAccount]:
+        return await self.get_all()
+
+    async def get_all_phones(self) -> list[WabaPhoneNumber]:
+        stmt = select(WabaPhoneNumber)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

@@ -1,76 +1,76 @@
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
-
-from .base import MessageDirection, MessageStatus, get_utc_now
+from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from src.core.database import Base
+from src.models.base import (
+    MessageDirection,
+    MessageStatus,
+    TimestampMixin,
+    UUIDMixin,
+    get_utc_now,
+)
 
 if TYPE_CHECKING:
-    from .contacts import Contact
-    from .templates import Template
-    from .waba import WabaPhoneNumber
+    from src.models.contacts import Contact
+    from src.models.waba import WabaPhoneNumber
 
 
-class MediaFile(SQLModel, table=True):
+class MediaFile(Base, UUIDMixin):
     __tablename__ = "media_files"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    message_id: Optional[UUID] = Field(default=None, foreign_key="messages.id")
-
-    meta_media_id: str = Field(index=True)
-    file_name: str
-    file_mime_type: str
-    file_size: Optional[int] = None
-    caption: Optional[str] = Field(default=None)
-
-    r2_key: str
-    bucket_name: str
-
-    created_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id"), nullable=True
     )
 
-    message: Optional["Message"] = Relationship(back_populates="media_files")
+    meta_media_id: Mapped[str] = mapped_column(String, index=True)
+    file_name: Mapped[str] = mapped_column(String)
+    file_mime_type: Mapped[str] = mapped_column(String)
+    file_size: Mapped[int | None] = mapped_column(nullable=True)
+    caption: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    r2_key: Mapped[str] = mapped_column(String)
+    bucket_name: Mapped[str] = mapped_column(String)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=get_utc_now
+    )
+
+    message: Mapped["Message | None"] = relationship(back_populates="media_files")
 
 
-class Message(SQLModel, table=True):
+class Message(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "messages"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    wamid: Optional[str] = Field(default=None, index=True)
+    wamid: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
 
-    waba_phone_id: UUID = Field(foreign_key="waba_phone_numbers.id")
-    contact_id: UUID = Field(foreign_key="contacts.id")
+    waba_phone_id: Mapped[UUID] = mapped_column(ForeignKey("waba_phone_numbers.id"))
+    contact_id: Mapped[UUID] = mapped_column(ForeignKey("contacts.id"))
 
-    direction: MessageDirection
-    status: MessageStatus = Field(default=MessageStatus.PENDING)
+    direction: Mapped[MessageDirection]
+    status: Mapped[MessageStatus] = mapped_column(default=MessageStatus.PENDING)
 
-    message_type: str = Field(default="text")
-    body: Optional[str] = Field(default=None)
+    message_type: Mapped[str] = mapped_column(String, default="text")
+    body: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    reply_to_message_id: Optional[UUID] = Field(
-        default=None, foreign_key="messages.id", nullable=True
+    reply_to_message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id"), nullable=True
     )
-    reaction: Optional[str] = Field(default=None, nullable=True)
+    reaction: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    template_id: Optional[UUID] = Field(default=None, foreign_key="templates.id")
-
-    media_files: List[MediaFile] = Relationship(back_populates="message")
-
-    created_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
-    )
-    updated_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    template_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("templates.id"), nullable=True
     )
 
-    contact: Optional["Contact"] = Relationship(
-        back_populates="messages",
-        sa_relationship_kwargs={"foreign_keys": "[Message.contact_id]"},
-    )
-    waba_phone: Optional["WabaPhoneNumber"] = Relationship(back_populates="messages")
+    media_files: Mapped[list["MediaFile"]] = relationship(back_populates="message")
 
-    parent_message: Optional["Message"] = Relationship(
-        sa_relationship_kwargs={"remote_side": "Message.id"}
+    contact: Mapped["Contact | None"] = relationship(
+        back_populates="messages", foreign_keys=[contact_id]
     )
+    waba_phone: Mapped["WabaPhoneNumber | None"] = relationship(
+        back_populates="messages"
+    )
+
+    parent_message: Mapped["Message | None"] = relationship(remote_side="Message.id")

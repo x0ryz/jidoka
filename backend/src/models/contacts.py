@@ -1,65 +1,53 @@
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
-
-from .base import ContactStatus, get_utc_now
-from .tags import ContactTagLink
+from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from src.core.database import Base
+from src.models.base import ContactStatus, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from .campaigns import CampaignContact
-    from .messages import Message
-    from .tags import Tag
+    from src.models.campaigns import CampaignContact
+    from src.models.messages import Message
+    from src.models.tags import Tag
 
 
-class Contact(SQLModel, table=True):
+class Contact(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "contacts"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    phone_number: str = Field(unique=True, index=True)
-    name: Optional[str] = None
-    link: Optional[str] = None
-    unread_count: int = Field(default=0)
+    phone_number: Mapped[str] = mapped_column(String, unique=True, index=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    link: Mapped[str | None] = mapped_column(String, nullable=True)
+    unread_count: Mapped[int] = mapped_column(default=0)
 
-    status: ContactStatus = Field(default=ContactStatus.ACTIVE)
+    status: Mapped[ContactStatus] = mapped_column(default=ContactStatus.ACTIVE)
 
-    last_message_id: Optional[UUID] = Field(
-        default=None, foreign_key="messages.id", nullable=True
+    last_message_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("messages.id", use_alter=True, name="fk_contacts_last_message_id"),
+        nullable=True,
     )
 
-    last_message_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime(timezone=True))
+    last_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
-    source: Optional[str] = None
-    tags: List["Tag"] = Relationship(
-        back_populates="contacts", link_model=ContactTagLink
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    tags: Mapped[list["Tag"]] = relationship(
+        secondary="contact_tags", back_populates="contacts"
     )
 
-    created_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
-    )
-    updated_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    last_message: Mapped["Message | None"] = relationship(
+        foreign_keys=[last_message_id], post_update=True
     )
 
-    last_message: Optional["Message"] = Relationship(
-        sa_relationship_kwargs={
-            "foreign_keys": "Contact.last_message_id",
-            "post_update": True,
-        }
-    )
-
-    messages: List["Message"] = Relationship(
+    messages: Mapped[list["Message"]] = relationship(
         back_populates="contact",
-        sa_relationship_kwargs={
-            "cascade": "all, delete-orphan",
-            "foreign_keys": "[Message.contact_id]",
-        },
+        cascade="all, delete-orphan",
+        foreign_keys="[Message.contact_id]",
     )
 
-    campaign_links: List["CampaignContact"] = Relationship(
-        back_populates="contact",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    campaign_links: Mapped[list["CampaignContact"]] = relationship(
+        back_populates="contact", cascade="all, delete-orphan"
     )

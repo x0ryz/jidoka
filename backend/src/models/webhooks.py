@@ -1,18 +1,17 @@
 from datetime import datetime
-from typing import Any, Dict
-from uuid import UUID, uuid4
+from typing import Any
 
+from sqlalchemy import DateTime
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Column, DateTime, Field, SQLModel
+from sqlalchemy.orm import Mapped, mapped_column
+from src.core.database import Base
+from src.models.base import UUIDMixin, get_utc_now
 
-from .base import get_utc_now
 
-
-class WebhookLog(SQLModel, table=True):
+class WebhookLog(Base, UUIDMixin):
     __tablename__ = "webhook_logs"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    payload: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
-    processed_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=get_utc_now
     )

@@ -1,14 +1,10 @@
 import base64
 
 from loguru import logger
-from sqlmodel import select
 from src.core.uow import UnitOfWork
 from src.models import (
     MessageDirection,
     MessageStatus,
-    Template,
-    WabaAccount,
-    WabaPhoneNumber,
     get_utc_now,
 )
 from src.schemas import (
@@ -35,7 +31,6 @@ class MessageProcessorService:
         self.notifier = notifier
 
     async def process_webhook(self, webhook: MetaWebhookPayload):
-        """Маршрутизація подій вебхука"""
         for entry in webhook.entry:
             waba_id = entry.id
 
@@ -57,7 +52,8 @@ class MessageProcessorService:
 
                 if value.messages:
                     phone_id = value.metadata.get("phone_number_id")
-                    await self._handle_messages(value.messages, phone_id)
+                    if phone_id:
+                        await self._handle_messages(value.messages, phone_id)
 
                 if value.statuses:
                     await self._handle_statuses(value.statuses)
@@ -82,7 +78,7 @@ class MessageProcessorService:
 
                 if self._is_newer_status(db_message.status, new_status):
                     db_message.status = new_status
-                    self.uow.session.add(db_message)
+                    self.uow.messages.add(db_message)
 
                     await self.notifier.notify_message_status(
                         message_id=db_message.id,
@@ -122,7 +118,7 @@ class MessageProcessorService:
 
                     if target_msg:
                         target_msg.reaction = msg.reaction.emoji
-                        self.uow.session.add(target_msg)
+                        self.uow.messages.add(target_msg)
                         logger.info(
                             f"Updated reaction for msg {target_msg.id}: {msg.reaction.emoji}"
                         )
@@ -209,7 +205,7 @@ class MessageProcessorService:
 
                 contact.last_message_id = new_msg.id
                 contact.last_message_at = new_msg.created_at
-                self.uow.session.add(contact)
+                self.uow.contacts.add(contact)
 
                 if msg.type in [
                     "image",
@@ -271,10 +267,8 @@ class MessageProcessorService:
         return weights.get(new, -1) > weights.get(old, -1)
 
     async def _fuzzy_find_message(self, phone_number: str, target_wamid: str):
-        """Шукає повідомлення за останніми 8 байтами ID (ігнорує префікс)."""
         try:
             contact = await self.uow.contacts.get_or_create(phone_number)
-            # Беремо останні 50 повідомлень
             last_msgs = await self.uow.messages.get_chat_history(
                 contact.id, limit=50, offset=0
             )
@@ -300,7 +294,6 @@ class MessageProcessorService:
             return None
 
     async def _handle_template_update(self, update: MetaTemplateUpdate):
-        """Сповіщення про зміну статусу шаблону на основі вебхука"""
         await self.notifier.notify_template_update(
             template_id=update.message_template_id,
             name=update.message_template_name,
@@ -309,36 +302,30 @@ class MessageProcessorService:
         )
 
         async with self.uow:
-            stmt = select(Template).where(
-                Template.meta_template_id == update.message_template_id
+            template = await self.uow.templates.get_by_meta_id(
+                update.message_template_id
             )
-            result = await self.uow.session.exec(stmt)
-            template = result.first()
             if template:
                 template.status = update.event
                 template.updated_at = get_utc_now()
-                self.uow.session.add(template)
+                self.uow.templates.add(template)
                 await self.uow.commit()
 
     async def _handle_account_review(
         self, waba_id: str, update: MetaAccountReviewUpdate
     ):
-        """Сповіщення про статус акаунту"""
         await self.notifier.notify_waba_update(
             waba_id=waba_id, status=update.decision, event_type="REVIEW_UPDATE"
         )
 
         async with self.uow:
-            stmt = select(WabaAccount).where(WabaAccount.waba_id == waba_id)
-            result = await self.uow.session.exec(stmt)
-            account = result.first()
+            account = await self.uow.waba.get_by_waba_id(waba_id)
             if account:
                 account.account_review_status = update.decision
-                self.uow.session.add(account)
+                self.uow.waba.add(account)
                 await self.uow.commit()
 
     async def _handle_phone_quality(self, update: MetaPhoneNumberQualityUpdate):
-        """Сповіщення про якість номеру"""
         await self.notifier.notify_phone_update(
             phone_number=update.display_phone_number,
             event=update.event,
@@ -346,16 +333,14 @@ class MessageProcessorService:
         )
 
         async with self.uow:
-            stmt = select(WabaPhoneNumber).where(
-                WabaPhoneNumber.display_phone_number == update.display_phone_number
+            phone = await self.uow.waba.get_by_display_phone(
+                update.display_phone_number
             )
-            result = await self.uow.session.exec(stmt)
-            phone = result.first()
             if phone:
                 phone.messaging_limit_tier = update.current_limit
                 if update.event == "FLAGGED":
                     phone.quality_rating = "RED"
                 elif update.event == "UNFLAGGED":
                     phone.quality_rating = "GREEN"
-                self.uow.session.add(phone)
+                self.uow.waba.add(phone)
                 await self.uow.commit()

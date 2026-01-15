@@ -1,49 +1,40 @@
-from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
-
-from .base import get_utc_now
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from src.core.database import Base
+from src.models.base import TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from .messages import Message
-    from .templates import Template
+    from src.models.messages import Message
+    from src.models.templates import Template
 
 
-class WabaAccount(SQLModel, table=True):
+class WabaAccount(Base, UUIDMixin):
     __tablename__ = "waba_accounts"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    waba_id: str
-    name: str
-    account_review_status: Optional[str] = None
-    business_verification_status: Optional[str] = None
+    waba_id: Mapped[str] = mapped_column(String)
+    name: Mapped[str] = mapped_column(String)
+    account_review_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    business_verification_status: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
 
-    # Використовуємо строки для уникнення циклічних імпортів
-    templates: List["Template"] = Relationship(back_populates="waba")
-    phone_numbers: List["WabaPhoneNumber"] = Relationship(back_populates="waba")
+    templates: Mapped[list["Template"]] = relationship(back_populates="waba")
+    phone_numbers: Mapped[list["WabaPhoneNumber"]] = relationship(back_populates="waba")
 
 
-class WabaPhoneNumber(SQLModel, table=True):
+class WabaPhoneNumber(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "waba_phone_numbers"
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    waba_id: Mapped[UUID] = mapped_column(ForeignKey("waba_accounts.id"))
+    waba: Mapped["WabaAccount | None"] = relationship(back_populates="phone_numbers")
 
-    waba_id: UUID = Field(foreign_key="waba_accounts.id")
-    waba: Optional[WabaAccount] = Relationship(back_populates="phone_numbers")
+    phone_number_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    display_phone_number: Mapped[str] = mapped_column(String)
+    status: Mapped[str | None] = mapped_column(String, nullable=True)
+    quality_rating: Mapped[str] = mapped_column(String, default="UNKNOWN")
+    messaging_limit_tier: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    phone_number_id: str = Field(unique=True, index=True)
-    display_phone_number: str
-    status: Optional[str] = None
-    quality_rating: str = Field(default="UNKNOWN")
-    messaging_limit_tier: Optional[str] = None
-
-    updated_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
-    )
-    created_at: datetime = Field(
-        default_factory=get_utc_now, sa_column=Column(DateTime(timezone=True))
-    )
-
-    messages: List["Message"] = Relationship(back_populates="waba_phone")
+    messages: Mapped[list["Message"]] = relationship(back_populates="waba_phone")
