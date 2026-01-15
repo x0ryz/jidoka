@@ -48,6 +48,7 @@ class Campaign(Base, UUIDMixin, TimestampMixin):
     delivered_count: Mapped[int] = mapped_column(default=0)
     failed_count: Mapped[int] = mapped_column(default=0)
     read_count: Mapped[int] = mapped_column(default=0)
+    replied_count: Mapped[int] = mapped_column(default=0)
     template: Mapped["Template | None"] = relationship(back_populates="campaigns")
     contacts: Mapped[list["CampaignContact"]] = relationship(
         back_populates="campaign", cascade="all, delete-orphan"
@@ -66,6 +67,7 @@ class CampaignContact(Base, UUIDMixin, TimestampMixin):
     message_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("messages.id"), nullable=True
     )
+    is_replied: Mapped[bool] = mapped_column(default=False)
 
     error_message: Mapped[str | None] = mapped_column(String, nullable=True)
     retry_count: Mapped[int] = mapped_column(default=0)

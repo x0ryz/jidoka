@@ -87,7 +87,12 @@ class MessageProcessorService:
 
                     if campaign_link:
                         if new_status == MessageStatus.DELIVERED:
-                            campaign_link.status = CampaignDeliveryStatus.DELIVERED
+                            if campaign_link.status not in [
+                                CampaignDeliveryStatus.READ,
+                                CampaignDeliveryStatus.FAILED,
+                            ]:
+                                campaign_link.status = CampaignDeliveryStatus.DELIVERED
+
                             campaign = await self.uow.campaigns.get_by_id(
                                 campaign_link.campaign_id
                             )
@@ -220,10 +225,34 @@ class MessageProcessorService:
                         logger.info(
                             f"Linked reply to parent message UUID: {parent_msg.id}"
                         )
-                    else:
-                        logger.warning(
-                            f"Parent message with WAMID {ctx_wamid} not found. Reply link will be null."
+
+                latest_campaign_message = (
+                    await self.uow.messages.get_latest_campaign_message_for_contact(
+                        contact.id
+                    )
+                )
+
+                if latest_campaign_message:
+                    campaign_link = await self.uow.campaign_contacts.get_by_message_id(
+                        latest_campaign_message.id
+                    )
+
+                    if campaign_link and not getattr(
+                        campaign_link, "is_replied", False
+                    ):
+                        campaign = await self.uow.campaigns.get_by_id(
+                            campaign_link.campaign_id
                         )
+                        if campaign:
+                            campaign.replied_count += 1
+                            self.uow.campaigns.add(campaign)
+
+                            campaign_link.is_replied = True
+                            self.uow.campaign_contacts.add(campaign_link)
+
+                            logger.info(
+                                f"Incremented reply count for campaign {campaign.id} due to message from {msg.from_}"
+                            )
 
                 new_msg = await self.uow.messages.create(
                     waba_phone_id=waba_phone_db_id,
