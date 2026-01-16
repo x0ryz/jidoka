@@ -16,8 +16,13 @@ class QuickReplyRepository:
         return quick_reply
 
     async def get_all(self) -> list[QuickReply]:
+<<<<<<< HEAD
         """Get all quick replies ordered by shortcut"""
         query = select(QuickReply).order_by(QuickReply.shortcut)
+=======
+        """Get all quick replies ordered by title"""
+        query = select(QuickReply).order_by(QuickReply.title)
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
@@ -25,11 +30,15 @@ class QuickReplyRepository:
         """Get quick reply by ID"""
         return await self.session.get(QuickReply, reply_id)
 
+<<<<<<< HEAD
     async def get_by_shortcut(self, shortcut: str) -> QuickReply | None:
         """Get quick reply by shortcut"""
         query = select(QuickReply).where(QuickReply.shortcut == shortcut)
         result = await self.session.execute(query)
         return result.scalars().first()
+=======
+
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
 
     async def update(self, reply_id: UUID, data: dict) -> QuickReply | None:
         """Update quick reply"""
@@ -69,7 +78,11 @@ class QuickReplyRepository:
         stmt = (
             select(QuickReply)
             .where(QuickReply.content.op("?")(language))
+<<<<<<< HEAD
             .order_by(QuickReply.shortcut)
+=======
+            .order_by(QuickReply.title)
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

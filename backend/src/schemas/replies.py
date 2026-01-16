@@ -7,12 +7,15 @@ from .base import TimestampMixin, UUIDMixin
 
 
 class QuickReplyBase(BaseModel):
+<<<<<<< HEAD
     shortcut: str = Field(
         ...,
         min_length=1,
         max_length=50,
         description="Unique shortcut for the quick reply",
     )
+=======
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
     title: str = Field(
         ...,
         min_length=1,
@@ -22,9 +25,12 @@ class QuickReplyBase(BaseModel):
     content: Dict[str, str] = Field(
         default_factory=dict, description="Content in different languages"
     )
+<<<<<<< HEAD
     default_language: str = Field(
         default="uk", max_length=5, description="Default language code"
     )
+=======
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
 
 
 class QuickReplyCreate(QuickReplyBase):
@@ -36,10 +42,15 @@ class QuickReplyCreate(QuickReplyBase):
 class QuickReplyUpdate(BaseModel):
     """Schema for updating a quick reply"""
 
+<<<<<<< HEAD
     shortcut: str | None = Field(None, min_length=1, max_length=50)
     title: str | None = Field(None, min_length=1, max_length=100)
     content: Dict[str, str] | None = None
     default_language: str | None = Field(None, max_length=5)
+=======
+    title: str | None = Field(None, min_length=1, max_length=100)
+    content: Dict[str, str] | None = None
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
 
 
 class QuickReplyResponse(QuickReplyBase, UUIDMixin, TimestampMixin):
@@ -50,14 +61,20 @@ class QuickReplyResponse(QuickReplyBase, UUIDMixin, TimestampMixin):
         json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
+<<<<<<< HEAD
                 "shortcut": "hello",
+=======
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
                 "title": "Greeting Message",
                 "content": {
                     "uk": "Привіт! Як справи?",
                     "en": "Hello! How are you?",
                     "ru": "Привет! Как дела?",
                 },
+<<<<<<< HEAD
                 "default_language": "uk",
+=======
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": "2024-01-15T10:30:00Z",
             }
@@ -69,9 +86,13 @@ class QuickReplyListResponse(BaseModel):
     """Schema for quick reply list item"""
 
     id: UUID
+<<<<<<< HEAD
     shortcut: str
     title: str
     default_language: str
+=======
+    title: str
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -83,5 +104,10 @@ class QuickReplyTextResponse(BaseModel):
     language: str
 
     model_config = ConfigDict(
+<<<<<<< HEAD
         json_schema_extra={"example": {"text": "Привіт! Як справи?", "language": "uk"}}
+=======
+        json_schema_extra={"example": {
+            "text": "Привіт! Як справи?", "language": "uk"}}
+>>>>>>> ba322de (feat: implement Quick Replies feature with CRUD operations and API endpoints)
     )

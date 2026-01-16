@@ -10,7 +10,13 @@ import {
 } from "../../types";
 import TagSelector from "../tags/TagSelector";
 import ContactActionsMenu from "./ContactActionsMenu";
+import QuickReplyPicker from "../quickReplies/QuickReplyPicker";
 import { apiClient } from "../../api";
+import {
+  detectLanguageFromPhone,
+  AVAILABLE_LANGUAGES,
+  getLanguageName,
+} from "../../utils/languageDetector";
 import {
   Check,
   X,
@@ -21,6 +27,8 @@ import {
   Link,
   Send,
   Lock,
+  Zap,
+  Languages,
 } from "lucide-react";
 
 // --- КОМПОНЕНТ ТАЙМЕРА З КІЛЬЦЕМ ТА HOVER-ЕФЕКТОМ ---
@@ -174,7 +182,7 @@ interface ChatWindowProps {
   onCreateTag: (tag: TagCreate) => Promise<void>;
   onDeleteTag: (tagId: string) => Promise<void>;
   onEditTag: (tagId: string, data: TagUpdate) => Promise<void>;
-  
+
   // Пагінація
   hasMoreMessages?: boolean;
   loadingOlderMessages?: boolean;
@@ -202,6 +210,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [replyTo, setReplyTo] = useState<MessageResponse | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isTagSelectorOpen, setIsTagSelectorOpen] = useState(false);
+  const [isQuickReplyPickerOpen, setIsQuickReplyPickerOpen] = useState(false);
+
+  // Визначаємо мову: спочатку з custom_data, потім автовизначення, потім дефолт
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(() => {
+    if (contact.custom_data?.language) {
+      return contact.custom_data.language as string;
+    }
+    return detectLanguageFromPhone(contact.phone_number);
+  });
 
   // Editing Name State
   const [isEditingName, setIsEditingName] = useState(false);
@@ -209,6 +226,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const quickReplyButtonRef = useRef<HTMLButtonElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const shouldScrollRef = useRef(false);
   const prevContactIdRef = useRef<string | null>(null);
@@ -235,8 +254,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsEditingName(false);
       prevContactIdRef.current = contact.id;
       prevMessagesLengthRef.current = 0;
+
+      // Оновлюємо мову при зміні контакта
+      if (contact.custom_data?.language) {
+        setSelectedLanguage(contact.custom_data.language as string);
+      } else {
+        setSelectedLanguage(detectLanguageFromPhone(contact.phone_number));
+      }
     }
-  }, [contact.id]);
+  }, [contact.id, contact.phone_number, contact.custom_data]);
 
   // Скролимо тільки якщо встановлений прапорець або користувач вже внизу
   useEffect(() => {
@@ -244,10 +270,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!container || messages.length === 0) return;
 
     // Якщо завантажили старіші повідомлення (додались на початок)
-    const loadedOlder = messages.length > prevMessagesLengthRef.current && 
-                        !shouldScrollRef.current && 
-                        loadingOlderMessages === false;
-    
+    const loadedOlder = messages.length > prevMessagesLengthRef.current &&
+      !shouldScrollRef.current &&
+      loadingOlderMessages === false;
+
     if (loadedOlder && prevScrollHeightRef.current > 0) {
       // Зберігаємо позицію скролу після додавання старіших повідомлень
       const newScrollHeight = container.scrollHeight;
@@ -267,7 +293,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         shouldScrollRef.current = false;
       }
     }
-    
+
     prevMessagesLengthRef.current = messages.length;
   }, [messages, loadingOlderMessages]);
 
@@ -293,12 +319,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       setReplyTo(null);
       // Скролимо вниз після відправки
       shouldScrollRef.current = true;
+      // Скидаємо висоту textarea
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "40px";
+      }
     } else if (messageText.trim()) {
       onSendMessage(contact.phone_number, messageText, replyTo?.id);
       setMessageText("");
       setReplyTo(null);
       // Скролимо вниз після відправки
       shouldScrollRef.current = true;
+      // Скидаємо висоту textarea
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "40px";
+      }
     }
   };
 
@@ -358,6 +392,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
     setIsEditingName(false);
+  };
+
+  const handleQuickReplySelect = (text: string) => {
+    setMessageText((prev) => (prev ? `${prev}\n${text}` : text));
+    // Оновлюємо висоту textarea після вставки
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "40px";
+        textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      }
+    }, 0);
   };
 
   return (
@@ -483,125 +528,125 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               </div>
             )}
             {messages.map((message) => {
-            const isOutbound = message.direction === MessageDirection.OUTBOUND;
-            const repliedMessage = getReplyingToMessage(
-              message.reply_to_message_id,
-            );
-            const hasReaction = !!message.reaction;
-            const paddingClass = hasReaction ? "pt-2 pb-5 px-3" : "py-2 px-3";
+              const isOutbound = message.direction === MessageDirection.OUTBOUND;
+              const repliedMessage = getReplyingToMessage(
+                message.reply_to_message_id,
+              );
+              const hasReaction = !!message.reaction;
+              const paddingClass = hasReaction ? "pt-2 pb-5 px-3" : "py-2 px-3";
 
-            // Debug logging for failed messages
-            if (message.status === MessageStatus.FAILED) {
-              console.log('Failed message:', {
-                id: message.id,
-                status: message.status,
-                error_code: message.error_code,
-                error_message: message.error_message
-              });
-            }
+              // Debug logging for failed messages
+              if (message.status === MessageStatus.FAILED) {
+                console.log('Failed message:', {
+                  id: message.id,
+                  status: message.status,
+                  error_code: message.error_code,
+                  error_message: message.error_message
+                });
+              }
 
-            return (
-              <div
-                key={message.id}
-                className={`flex ${isOutbound ? "justify-end" : "justify-start"} group ${hasReaction ? "mb-4" : "mb-1"}`}
-              >
+              return (
                 <div
-                  className={`relative max-w-[85%] lg:max-w-[70%] ${paddingClass} rounded-lg shadow-sm text-sm leading-relaxed
-                    ${isOutbound
-                      ? "bg-[#d9fdd3] text-gray-900 rounded-tr-none"
-                      : "bg-white text-gray-900 rounded-tl-none"
-                    }`}
+                  key={message.id}
+                  className={`flex ${isOutbound ? "justify-end" : "justify-start"} group ${hasReaction ? "mb-4" : "mb-1"}`}
                 >
-                  {repliedMessage && (
-                    <div
-                      className={`mb-2 p-2 rounded border-l-4 text-xs cursor-pointer opacity-80
-                      ${isOutbound ? "bg-[#cfe9c6] border-green-600" : "bg-gray-100 border-gray-400"}`}
-                      onClick={() => {
-                        const el = document.getElementById(
-                          `msg-${repliedMessage.id}`,
-                        );
-                        el?.scrollIntoView({
-                          behavior: "smooth",
-                          block: "center",
-                        });
-                      }}
-                    >
-                      <div className="font-bold text-gray-700 mb-1">
-                        {repliedMessage.direction === MessageDirection.OUTBOUND
-                          ? "Ви"
-                          : contact.name || contact.phone_number}
-                      </div>
-                      <div className="truncate line-clamp-1">
-                        {repliedMessage.body || "Медіа файл"}
-                      </div>
-                    </div>
-                  )}
-
-                  <div id={`msg-${message.id}`}>
-                    {/* Media Files */}
-                    {message.media_files?.length > 0 && (
-                      <div className="mb-2 grid gap-1">
-                        {message.media_files?.map((media) => (
-                          <div
-                            key={media.id}
-                            className="rounded overflow-hidden"
-                          >
-                            <a
-                              href={media.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 p-3 bg-black/5 rounded-lg hover:bg-black/10 transition border border-black/5"
-                            >
-                              <Paperclip className="w-5 h-5 text-gray-600" />
-                              <span className="underline decoration-dotted">
-                                {media.file_name}
-                              </span>
-                            </a>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {message.body && (
-                      <div className="whitespace-pre-wrap">{message.body}</div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-end gap-1 mt-1 select-none">
-                    <span className="text-[10px] text-gray-500">
-                      {formatMessageTime(message.created_at)}
-                    </span>
-                    {isOutbound && (
-                      <span
-                        className={`text-[10px] ${getStatusClass(message.status)} cursor-help`}
-                        title={message.status === MessageStatus.FAILED && message.error_message ? `Помилка: ${message.error_message}` : ''}
-                      >
-                        {getStatusIcon(message.status)}
-                      </span>
-                    )}
-                  </div>
-
-                  {message.reaction && (
-                    <div
-                      className={`absolute -bottom-3 ${isOutbound ? "right-0" : "left-0"}
-                      bg-white rounded-full px-1.5 py-0.5 shadow-sm text-base border border-gray-100 z-10`}
-                    >
-                      {message.reaction}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => setReplyTo(message)}
-                    className={`absolute top-0 ${isOutbound ? "-left-8" : "-right-8"}
-                      opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity`}
-                    title="Відповісти"
+                  <div
+                    className={`relative max-w-[85%] lg:max-w-[70%] ${paddingClass} rounded-lg shadow-sm text-sm leading-relaxed
+                    ${isOutbound
+                        ? "bg-[#d9fdd3] text-gray-900 rounded-tr-none"
+                        : "bg-white text-gray-900 rounded-tl-none"
+                      }`}
                   >
-                    <CornerUpLeft className="w-4 h-4" />
-                  </button>
+                    {repliedMessage && (
+                      <div
+                        className={`mb-2 p-2 rounded border-l-4 text-xs cursor-pointer opacity-80
+                      ${isOutbound ? "bg-[#cfe9c6] border-green-600" : "bg-gray-100 border-gray-400"}`}
+                        onClick={() => {
+                          const el = document.getElementById(
+                            `msg-${repliedMessage.id}`,
+                          );
+                          el?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "center",
+                          });
+                        }}
+                      >
+                        <div className="font-bold text-gray-700 mb-1">
+                          {repliedMessage.direction === MessageDirection.OUTBOUND
+                            ? "Ви"
+                            : contact.name || contact.phone_number}
+                        </div>
+                        <div className="truncate line-clamp-1">
+                          {repliedMessage.body || "Медіа файл"}
+                        </div>
+                      </div>
+                    )}
+
+                    <div id={`msg-${message.id}`}>
+                      {/* Media Files */}
+                      {message.media_files?.length > 0 && (
+                        <div className="mb-2 grid gap-1">
+                          {message.media_files?.map((media) => (
+                            <div
+                              key={media.id}
+                              className="rounded overflow-hidden"
+                            >
+                              <a
+                                href={media.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 p-3 bg-black/5 rounded-lg hover:bg-black/10 transition border border-black/5"
+                              >
+                                <Paperclip className="w-5 h-5 text-gray-600" />
+                                <span className="underline decoration-dotted">
+                                  {media.file_name}
+                                </span>
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {message.body && (
+                        <div className="whitespace-pre-wrap">{message.body}</div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-end gap-1 mt-1 select-none">
+                      <span className="text-[10px] text-gray-500">
+                        {formatMessageTime(message.created_at)}
+                      </span>
+                      {isOutbound && (
+                        <span
+                          className={`text-[10px] ${getStatusClass(message.status)} cursor-help`}
+                          title={message.status === MessageStatus.FAILED && message.error_message ? `Помилка: ${message.error_message}` : ''}
+                        >
+                          {getStatusIcon(message.status)}
+                        </span>
+                      )}
+                    </div>
+
+                    {message.reaction && (
+                      <div
+                        className={`absolute -bottom-3 ${isOutbound ? "right-0" : "left-0"}
+                      bg-white rounded-full px-1.5 py-0.5 shadow-sm text-base border border-gray-100 z-10`}
+                      >
+                        {message.reaction}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => setReplyTo(message)}
+                      className={`absolute top-0 ${isOutbound ? "-left-8" : "-right-8"}
+                      opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-600 transition-opacity`}
+                      title="Відповісти"
+                    >
+                      <CornerUpLeft className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
           </>
         )}
         <div ref={messagesEndRef} />
@@ -672,6 +717,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           />
 
           <button
+            onClick={() => setIsQuickReplyPickerOpen(true)}
+            ref={quickReplyButtonRef}
+            className={`p-2 text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50 rounded-full transition-colors w-10 h-10 flex items-center justify-center ${isSessionExpired ? "opacity-50 cursor-not-allowed" : ""}`}
+            title="Швидкі відповіді"
+            disabled={isSessionExpired}
+          >
+            <Zap className="w-5 h-5" />
+          </button>
+
+          <button
             onClick={() => fileInputRef.current?.click()}
             className={`p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors w-10 h-10 flex items-center justify-center ${isSessionExpired ? "opacity-50 cursor-not-allowed" : ""}`}
             title="Прикріпити файл"
@@ -681,8 +736,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </button>
 
           <textarea
+            ref={textareaRef}
             value={messageText}
-            onChange={(e) => setMessageText(e.target.value)}
+            onChange={(e) => {
+              setMessageText(e.target.value);
+              // Auto-resize
+              if (textareaRef.current) {
+                textareaRef.current.style.height = "40px";
+                textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -696,7 +759,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   ? "Додати підпис..."
                   : "Написати повідомлення..."
             }
-            className="flex-1 max-h-32 px-2 py-2 bg-transparent outline-none text-gray-800 placeholder-gray-400 overflow-y-auto resize-none disabled:text-gray-400"
+            className="flex-1 px-2 py-2 bg-transparent outline-none text-gray-800 placeholder-gray-400 overflow-y-auto resize-none disabled:text-gray-400"
             rows={1}
             style={{ minHeight: "40px" }}
             disabled={isSessionExpired} // Блокування тексту
@@ -716,6 +779,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Quick Reply Picker */}
+      <QuickReplyPicker
+        isOpen={isQuickReplyPickerOpen}
+        onClose={() => setIsQuickReplyPickerOpen(false)}
+        onSelect={handleQuickReplySelect}
+        language={selectedLanguage}
+        buttonRef={quickReplyButtonRef}
+      />
     </div>
   );
 };
