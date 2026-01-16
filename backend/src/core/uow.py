@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.repositories.campaign import CampaignContactRepository, CampaignRepository
 from src.repositories.contact import ContactRepository
 from src.repositories.message import MessageRepository
+from src.repositories.reply import QuickReplyRepository
 from src.repositories.tag import TagRepository
 from src.repositories.template import TemplateRepository
 from src.repositories.waba import WabaRepository
@@ -24,6 +25,7 @@ class UnitOfWork:
         self.campaigns = CampaignRepository(self.session)
         self.campaign_contacts = CampaignContactRepository(self.session)
         self.tags = TagRepository(self.session)
+        self.quick_replies = QuickReplyRepository(self.session)
 
         return self
 

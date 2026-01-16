@@ -9,6 +9,7 @@ from .base import (
 from .campaigns import Campaign, CampaignContact
 from .contacts import Contact
 from .messages import MediaFile, Message
+from .replies import QuickReply
 from .tags import ContactTagLink, Tag
 from .templates import Template
 from .waba import WabaAccount, WabaPhoneNumber
@@ -32,4 +33,5 @@ __all__ = [
     "WebhookLog",
     "Tag",
     "ContactTagLink",
+    "QuickReply",
 ]
