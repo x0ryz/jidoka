@@ -23,7 +23,7 @@ import {
   Lock,
 } from "lucide-react";
 
-// --- КОМПОНЕНТ ТАЙМЕРА З КІЛЬЦЕМ (SVG RING) ---
+// --- КОМПОНЕНТ ТАЙМЕРА З КІЛЬЦЕМ ТА HOVER-ЕФЕКТОМ ---
 const SessionTimer: React.FC<{ lastIncomingAt: string | null | undefined }> = ({
   lastIncomingAt,
 }) => {
@@ -33,6 +33,8 @@ const SessionTimer: React.FC<{ lastIncomingAt: string | null | undefined }> = ({
     minutes: number;
     expired: boolean;
   } | null>(null);
+
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     const calculateTime = () => {
@@ -56,7 +58,6 @@ const SessionTimer: React.FC<{ lastIncomingAt: string | null | undefined }> = ({
     };
 
     calculateTime();
-    // Оновлюємо кожну секунду, щоб кільце плавно рухалось (або хоча б хвилини)
     const interval = setInterval(calculateTime, 1000);
 
     return () => clearInterval(interval);
@@ -65,26 +66,26 @@ const SessionTimer: React.FC<{ lastIncomingAt: string | null | undefined }> = ({
   if (!timeLeft) return null;
 
   // Налаштування SVG кільця
-  const size = 42; // Розмір віджета в пікселях
+  const size = 42;
   const strokeWidth = 3;
   const center = size / 2;
   const radius = center - strokeWidth;
   const circumference = 2 * Math.PI * radius;
 
-  // Прогрес (від 1 до 0, де 1 - це повні 24 години)
+  // Прогрес
   const maxTime = 24 * 60 * 60 * 1000;
   const progress = Math.max(0, Math.min(1, timeLeft.totalMs / maxTime));
   const strokeDashoffset = circumference * (1 - progress);
 
-  // Вибір кольору
-  let strokeColor = "text-green-500"; // > 4 годин
-  if (timeLeft.hours < 4) strokeColor = "text-amber-500"; // < 4 годин
-  if (timeLeft.hours < 1) strokeColor = "text-red-500"; // < 1 години
+  // Кольори
+  let strokeColor = "text-green-500";
+  if (timeLeft.hours < 4) strokeColor = "text-amber-500";
+  if (timeLeft.hours < 1) strokeColor = "text-red-500";
 
   if (timeLeft.expired) {
     return (
       <div
-        className="flex items-center justify-center bg-gray-100 rounded-full border border-gray-300 text-gray-400"
+        className="flex items-center justify-center bg-gray-100 rounded-full border border-gray-300 text-gray-400 cursor-help"
         style={{ width: size, height: size }}
         title="Сесія закрита (24г). Потрібен шаблон."
       >
@@ -95,10 +96,13 @@ const SessionTimer: React.FC<{ lastIncomingAt: string | null | undefined }> = ({
 
   return (
     <div
-      className="relative flex items-center justify-center"
+      className="relative flex items-center justify-center cursor-help"
       style={{ width: size, height: size }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      title={`Залишилось: ${timeLeft.hours}г ${timeLeft.minutes}хв`}
     >
-      {/* Фоновe сіре кільце */}
+      {/* Фонове кільце */}
       <svg
         className="absolute inset-0 transform -rotate-90"
         width={size}
@@ -109,10 +113,10 @@ const SessionTimer: React.FC<{ lastIncomingAt: string | null | undefined }> = ({
           cy={center}
           r={radius}
           fill="transparent"
-          stroke="#e5e7eb" // gray-200
+          stroke="#e5e7eb"
           strokeWidth={strokeWidth}
         />
-        {/* Активне кольорове кільце */}
+        {/* Активне кільце */}
         <circle
           cx={center}
           cy={center}
@@ -128,12 +132,15 @@ const SessionTimer: React.FC<{ lastIncomingAt: string | null | undefined }> = ({
       </svg>
 
       {/* Текст по центру */}
-      <div
-        className="z-10 flex flex-col items-center justify-center leading-none"
-        title={`Залишилось: ${timeLeft.hours}г ${timeLeft.minutes}хв`}
-      >
-        <span className={`text-[11px] font-bold ${strokeColor}`}>
-          {timeLeft.hours > 0 ? (
+      <div className="z-10 flex flex-col items-center justify-center leading-none select-none">
+        <span
+          className={`font-bold transition-all duration-200 ${strokeColor} ${isHovered ? "text-[10px]" : "text-[11px]"}`}
+        >
+          {isHovered ? (
+            // При наведенні: показуємо HH:MM (напр. 23:15)
+            `${timeLeft.hours}:${timeLeft.minutes.toString().padStart(2, "0")}`
+          ) : // Звичайний стан: показуємо години або хвилини
+          timeLeft.hours > 0 ? (
             <>
               {timeLeft.hours}
               <span className="text-[9px] font-normal">г</span>
@@ -195,7 +202,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Перевірка чи сесія активна (для блокування інпуту)
+  // Перевірка чи сесія активна
   const isSessionExpired = React.useMemo(() => {
     if (!contact.last_incoming_message_at) return true;
     const end =
