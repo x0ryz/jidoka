@@ -16,6 +16,20 @@ from src.worker import handle_account_sync_task
 router = APIRouter(prefix="", tags=["WABA"])
 
 
+@router.get("/waba/settings", response_model=WabaAccountResponse)
+async def get_waba_settings(uow: UnitOfWork = Depends(get_uow)):
+    """
+    Отримує поточні налаштування WABA (без чутливих даних).
+    """
+    async with uow:
+        account = await uow.waba.get_account()
+        if not account:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=404, detail="WABA account not found")
+        return account
+
+
 @router.post("/waba/settings", response_model=WabaAccountResponse)
 async def update_waba_settings(
     settings: WabaAccountRequest, uow: UnitOfWork = Depends(get_uow)
@@ -62,7 +76,8 @@ async def trigger_waba_sync(request: Request):
     try:
         await handle_account_sync_task.kiq(sync_request)
     except Exception as e:
-        raise ServiceUnavailableError(detail=f"Failed to enqueue sync task. Error: {e}")
+        raise ServiceUnavailableError(
+            detail=f"Failed to enqueue sync task. Error: {e}")
 
     return {
         "status": "sync_started",
