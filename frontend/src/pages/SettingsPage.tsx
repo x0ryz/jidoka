@@ -1,7 +1,16 @@
 import React, { useEffect, useState } from "react";
-import apiClient from "../api/client";
+import { apiClient } from "../api";
 import { WabaAccountStatus } from "../types";
-import { AlertCircle, Loader, Save, Check } from "lucide-react";
+import { AlertCircle, Loader, Save, Check, RefreshCw } from "lucide-react";
+
+interface WabaSettings {
+  waba_id: string;
+  name: string;
+  access_token?: string;
+  app_secret?: string;
+  verify_token?: string;
+  graph_api_version?: string;
+}
 
 const SettingsPage: React.FC = () => {
   const [account, setAccount] = useState<WabaAccountStatus | null>(null);
@@ -10,12 +19,17 @@ const SettingsPage: React.FC = () => {
   const [success, setSuccess] = useState(false);
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<WabaSettings>({
     waba_id: "",
-    name: "",
+    name: "My Business",
+    access_token: "",
+    app_secret: "",
+    verify_token: "",
+    graph_api_version: "v21.0",
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Завантажуємо дані акаунту при завантаженні сторінки
   useEffect(() => {
@@ -26,24 +40,25 @@ const SettingsPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const wabaStatus = await apiClient.getWabaStatus();
-
-      if (wabaStatus.accounts && wabaStatus.accounts.length > 0) {
-        const currentAccount = wabaStatus.accounts[0];
-        setAccount(currentAccount);
+      
+      const settings = await apiClient.getWabaSettings();
+      
+      if (settings) {
+        setAccount(settings as any);
         setFormData({
-          waba_id: currentAccount.waba_id,
-          name: currentAccount.name,
-        });
-      } else {
-        setFormData({
-          waba_id: "",
-          name: "",
+          waba_id: settings.waba_id || "",
+          name: settings.name || "My Business",
+          access_token: "",
+          app_secret: "",
+          verify_token: "",
+          graph_api_version: settings.graph_api_version || "v21.0",
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load account data:", err);
-      setError("Не вдалося завантажити дані акаунту");
+      if (err.response?.status !== 404) {
+        setError("Не вдалося завантажити дані акаунту");
+      }
     } finally {
       setLoading(false);
     }
@@ -56,6 +71,34 @@ const SettingsPage: React.FC = () => {
       [name]: value,
     }));
     setSuccess(false);
+  };
+
+  const handleSync = async () => {
+    try {
+      setIsSyncing(true);
+      setError(null);
+      setSuccess(false);
+
+      await apiClient.triggerWabaSync();
+      
+      setSuccess(true);
+      setError(null);
+      
+      // Reload data after sync
+      setTimeout(() => {
+        loadAccountData();
+      }, 2000);
+      
+      // Hide success message after 3 seconds
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: any) {
+      console.error("Failed to trigger sync:", err);
+      setError(
+        err.response?.data?.detail || "Не вдалося розпочати синхронізацію"
+      );
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -71,22 +114,42 @@ const SettingsPage: React.FC = () => {
       setError(null);
       setSuccess(false);
 
-      const response = await apiClient.updateWabaAccount({
+      const payload: any = {
         waba_id: formData.waba_id.trim(),
         name: formData.name.trim(),
-      });
+        graph_api_version: formData.graph_api_version,
+      };
 
-      setAccount(response);
+      // Only include tokens if they are provided
+      if (formData.access_token?.trim()) {
+        payload.access_token = formData.access_token.trim();
+      }
+      if (formData.app_secret?.trim()) {
+        payload.app_secret = formData.app_secret.trim();
+      }
+      if (formData.verify_token?.trim()) {
+        payload.verify_token = formData.verify_token.trim();
+      }
+
+      const response = await apiClient.updateWabaSettings(payload);
+
+      setAccount(response as any);
       setSuccess(true);
+      
+      // Clear sensitive fields after saving
+      setFormData(prev => ({
+        ...prev,
+        access_token: "",
+        app_secret: "",
+        verify_token: "",
+      }));
 
       // Приховуємо повідомлення про успіх через 3 секунди
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to update account:", err);
       setError(
-        err instanceof Error
-          ? err.message
-          : "Не вдалося зберегти дані акаунту"
+        err.response?.data?.detail || "Не вдалося зберегти дані акаунту"
       );
     } finally {
       setIsSaving(false);
@@ -106,6 +169,18 @@ const SettingsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-gray-900">Налаштування WABA</h1>
+        <button
+          onClick={handleSync}
+          disabled={isSyncing}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
+          {isSyncing ? "Синхронізація..." : "Синхронізувати"}
+        </button>
+      </div>
+
       {/* Повідомлення про помилку */}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
@@ -122,25 +197,25 @@ const SettingsPage: React.FC = () => {
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
           <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
           <div>
-            <h3 className="font-medium text-green-900">Збережено</h3>
+            <h3 className="font-medium text-green-900">Успішно</h3>
             <p className="text-sm text-green-700">
-              Дані акаунту успішно оновлені
+              {isSyncing ? "Синхронізацію розпочато" : "Дані акаунту успішно оновлені"}
             </p>
           </div>
         </div>
       )}
 
       {/* Форма */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-6">
           Дані WABA акаунту
         </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* WABA ID */}
           <div>
             <label htmlFor="waba_id" className="block text-sm font-medium text-gray-700 mb-2">
-              ID акаунту *
+              WABA ID <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -148,19 +223,19 @@ const SettingsPage: React.FC = () => {
               name="waba_id"
               value={formData.waba_id}
               onChange={handleInputChange}
-              placeholder="Введіть ID WABA акаунту"
+              placeholder="1234567890"
               required
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Унікальний ID вашого WABA акаунту від Meta
+              WhatsApp Business Account ID з Meta Business Manager
             </p>
           </div>
 
           {/* Account Name */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-              Назва акаунту
+              Назва бізнесу <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -168,11 +243,88 @@ const SettingsPage: React.FC = () => {
               name="name"
               value={formData.name}
               onChange={handleInputChange}
-              placeholder="Введіть назву акаунту (опціонально)"
+              placeholder="My Business"
+              required
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Внутрішня назва для вашого акаунту
+              Назва вашого бізнесу
+            </p>
+          </div>
+
+          {/* Access Token */}
+          <div>
+            <label htmlFor="access_token" className="block text-sm font-medium text-gray-700 mb-2">
+              Access Token
+            </label>
+            <input
+              type="password"
+              id="access_token"
+              name="access_token"
+              value={formData.access_token}
+              onChange={handleInputChange}
+              placeholder="Залиште порожнім, якщо не змінюєте"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              System User Access Token з Meta Business Manager
+            </p>
+          </div>
+
+          {/* App Secret */}
+          <div>
+            <label htmlFor="app_secret" className="block text-sm font-medium text-gray-700 mb-2">
+              App Secret
+            </label>
+            <input
+              type="password"
+              id="app_secret"
+              name="app_secret"
+              value={formData.app_secret}
+              onChange={handleInputChange}
+              placeholder="Залиште порожнім, якщо не змінюєте"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              App Secret з Meta App Dashboard
+            </p>
+          </div>
+
+          {/* Verify Token */}
+          <div>
+            <label htmlFor="verify_token" className="block text-sm font-medium text-gray-700 mb-2">
+              Verify Token
+            </label>
+            <input
+              type="password"
+              id="verify_token"
+              name="verify_token"
+              value={formData.verify_token}
+              onChange={handleInputChange}
+              placeholder="Залиште порожнім, якщо не змінюєте"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Verify Token для webhook верифікації
+            </p>
+          </div>
+
+          {/* Graph API Version */}
+          <div>
+            <label htmlFor="graph_api_version" className="block text-sm font-medium text-gray-700 mb-2">
+              Graph API Version
+            </label>
+            <input
+              type="text"
+              id="graph_api_version"
+              name="graph_api_version"
+              value={formData.graph_api_version}
+              onChange={handleInputChange}
+              placeholder="v21.0"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Версія Meta Graph API (наприклад, v21.0)
             </p>
           </div>
 
@@ -181,7 +333,7 @@ const SettingsPage: React.FC = () => {
             <button
               type="submit"
               disabled={isSaving}
-              className="inline-flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-md font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-md font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? (
                 <>
@@ -197,6 +349,29 @@ const SettingsPage: React.FC = () => {
             </button>
           </div>
         </form>
+
+        {/* Info Section */}
+        <div className="mt-8 pt-8 border-t border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">
+            Інформація
+          </h3>
+          <div className="space-y-2 text-sm text-gray-600">
+            <p>• Токени та секрети автоматично шифруються при збереженні</p>
+            <p>• Після збереження поля з токенами очищаються з міркувань безпеки</p>
+            <p>• Синхронізація оновлює інформацію про акаунт та телефонні номери</p>
+            <p>
+              • Для отримання токенів відвідайте{" "}
+              <a
+                href="https://developers.facebook.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline"
+              >
+                Meta for Developers
+              </a>
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
