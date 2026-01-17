@@ -222,6 +222,23 @@ export class ApiClient {
     return response.data;
   }
 
+  async getWabaSettings(): Promise<any> {
+    const response = await this.client.get("/waba/settings");
+    return response.data;
+  }
+
+  async updateWabaSettings(data: {
+    waba_id: string;
+    name: string;
+    access_token?: string;
+    app_secret?: string;
+    verify_token?: string;
+    graph_api_version?: string;
+  }): Promise<any> {
+    const response = await this.client.post("/waba/settings", data);
+    return response.data;
+  }
+
   async updateWabaAccount(data: { waba_id: string; name?: string }): Promise<any> {
     const response = await this.client.post("/waba/account", data);
     return response.data;
