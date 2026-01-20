@@ -1,8 +1,7 @@
 import sentry_sdk
-import taskiq_fastapi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.core.broker import broker
+
 from src.core.config import settings
 from src.core.exceptions import BaseException
 from src.core.handlers import global_exception_handler, local_exception_handler
@@ -30,8 +29,6 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_exception_handler(BaseException, local_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
-
-taskiq_fastapi.init(broker, app)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,6 +1,5 @@
-import io
-
 import aioboto3
+
 from src.core.config import settings
 
 

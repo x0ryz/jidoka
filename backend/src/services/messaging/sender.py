@@ -3,7 +3,7 @@ import uuid
 
 from loguru import logger
 
-from src.clients.meta import MetaClient
+from src.clients.meta import MetaClient, MetaPayloadBuilder
 from src.core.config import settings
 from src.core.uow import UnitOfWork
 from src.models import Contact, Message, MessageDirection, MessageStatus
@@ -103,10 +103,11 @@ class MessageSenderService:
             # Step 2: Get WABA phone
             waba_phone = await self._get_preferred_phone(contact, phone_id)
             if not waba_phone:
-                # Fallback: get ANY phone if default isn't set? 
+                # Fallback: get ANY phone if default isn't set?
                 # Or just error out. User said they have multiple numbers.
                 # If we return None here, it errors.
-                raise ValueError("No eligible WABA Phone found (check phone_id or default phone config).")
+                raise ValueError(
+                    "No eligible WABA Phone found (check phone_id or default phone config).")
 
             # Step 3: Upload to R2 (permanent storage)
             media_type = self._get_media_type(mime_type)
@@ -161,7 +162,7 @@ class MessageSenderService:
 
             # Step 8: Send via Meta API
             try:
-                payload = self._build_media_payload(
+                payload = MetaPayloadBuilder.build_media_message(
                     to_phone=phone_number,
                     media_type=media_type,
                     media_id=meta_media_id,
@@ -185,7 +186,8 @@ class MessageSenderService:
                 await self.uow.commit()
                 await self.uow.session.refresh(message)
 
-                logger.info(f"Media message sent to {phone_number}. WAMID: {wamid}")
+                logger.info(
+                    f"Media message sent to {phone_number}. WAMID: {wamid}")
 
                 # Notify
                 await self.notifier.notify_new_message(
@@ -229,18 +231,15 @@ class MessageSenderService:
         else:
             waba_phone = None
 
-
         if not waba_phone:
             logger.error("Cannot react: No WABA phone found")
             return
 
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": contact.phone_number,
-            "type": "reaction",
-            "reaction": {"message_id": target_message.wamid, "emoji": emoji},
-        }
+        payload = MetaPayloadBuilder.build_reaction_message(
+            to_phone=contact.phone_number,
+            target_wamid=target_message.wamid,
+            emoji=emoji,
+        )
 
         try:
             await self.meta_client.send_message(waba_phone.phone_number_id, payload)
@@ -290,7 +289,8 @@ class MessageSenderService:
             if parent_msg:
                 context_wamid = parent_msg.wamid
             else:
-                logger.warning(f"Reply target message {reply_to_message_id} not found")
+                logger.warning(
+                    f"Reply target message {reply_to_message_id} not found")
 
         # Create message entity
         message = await self.uow.messages.create(
@@ -349,7 +349,8 @@ class MessageSenderService:
             )
 
             result = await self.meta_client.send_message(
-                waba_phone.phone_number_id, payload, idempotency_key=str(message.id)
+                waba_phone.phone_number_id, payload, idempotency_key=str(
+                    message.id)
             )
             wamid = result.get("messages", [{}])[0].get("id")
 
@@ -361,7 +362,8 @@ class MessageSenderService:
             message.status = MessageStatus.SENT
             self.uow.session.add(message)
 
-            logger.info(f"Message sent to {contact.phone_number}. WAMID: {wamid}")
+            logger.info(
+                f"Message sent to {contact.phone_number}. WAMID: {wamid}")
 
             if not is_campaign:
                 await self.notifier.notify_message_status(
@@ -426,30 +428,6 @@ class MessageSenderService:
         else:
             return "document"
 
-    def _build_media_payload(
-        self,
-        to_phone: str,
-        media_type: str,
-        media_id: str,
-        caption: str | None = None,
-    ) -> dict:
-        """Build WhatsApp API payload for media message."""
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to_phone,
-            "type": media_type,
-            media_type: {
-                "id": media_id,
-            },
-        }
-
-        # Add caption if provided and supported
-        if caption and media_type in ["image", "video", "document"]:
-            payload[media_type]["caption"] = caption
-
-        return payload
-
     def _build_payload(
         self,
         to_phone: str,
@@ -458,25 +436,23 @@ class MessageSenderService:
         template_name: str | None,
         context_wamid: str | None = None,
     ) -> dict:
-        """Build WhatsApp API payload."""
-        payload = {
-            "messaging_product": "whatsapp",
-            "recipient_type": "individual",
-            "to": to_phone,
-            "type": message_type,
-        }
-        if context_wamid:
-            payload["context"] = {"message_id": context_wamid}
+        """Build WhatsApp API payload using MetaPayloadBuilder."""
         if message_type == "text":
-            payload["text"] = {"body": body}
+            return MetaPayloadBuilder.build_text_message(
+                to_phone=to_phone,
+                body=body,
+                context_wamid=context_wamid,
+            )
         elif message_type == "template":
             if not template_name:
                 raise ValueError("Template name required")
-            payload["template"] = {
-                "name": template_name,
-                "language": {"code": "en_US"},
-            }
-        return payload
+            return MetaPayloadBuilder.build_template_message(
+                to_phone=to_phone,
+                template_name=template_name,
+                context_wamid=context_wamid,
+            )
+        else:
+            raise ValueError(f"Unsupported message type: {message_type}")
 
     async def _get_preferred_phone(self, contact: Contact, phone_id: str | None = None):
         """
@@ -504,4 +480,3 @@ class MessageSenderService:
                     return phone
 
         return None
-

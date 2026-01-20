@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     DB_ENCRYPTION_KEY: str
 
-    REDIS_URL: str
+    NATS_URL: str
 
     R2_ACCOUNT_ID: str
     R2_ACCESS_KEY: str

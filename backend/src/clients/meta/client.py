@@ -20,9 +20,18 @@ def is_transient_error(exception):
 
 
 class MetaClient:
-    def __init__(self, client: httpx.AsyncClient, base_url: str = None):
+    def __init__(
+        self, client: httpx.AsyncClient, base_url: str = None, token: str = None
+    ):
         self.client = client
         self.base_url = base_url
+        self.token = token
+
+    def _get_headers(self, existing_headers: dict = None):
+        headers = existing_headers or {}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        return headers
 
     @retry(
         stop=stop_after_attempt(3),
@@ -36,7 +45,7 @@ class MetaClient:
         """Send a message to a phone number using Meta Graph API."""
         url = f"{self.base_url}/{phone_id}/messages"
 
-        headers = {}
+        headers = self._get_headers()
         if idempotency_key:
             headers["X-Idempotency-Key"] = idempotency_key
 
@@ -59,7 +68,9 @@ class MetaClient:
         files = {"file": (filename, file_bytes, mime_type)}
         data = {"messaging_product": "whatsapp"}
 
-        resp = await self.client.post(url, files=files, data=data)
+        headers = self._get_headers()
+
+        resp = await self.client.post(url, files=files, data=data, headers=headers)
         resp.raise_for_status()
 
         result = resp.json()
@@ -75,7 +86,7 @@ class MetaClient:
         url = f"{self.base_url}/{waba_id}"
         params = {"fields": "name,account_review_status,business_verification_status"}
 
-        resp = await self.client.get(url, params=params)
+        resp = await self.client.get(url, params=params, headers=self._get_headers())
         resp.raise_for_status()
         return resp.json()
 
@@ -83,20 +94,22 @@ class MetaClient:
         """Fetch WABA phone numbers from Meta Graph API."""
         url = f"{self.base_url}/{waba_id}/phone_numbers"
 
-        resp = await self.client.get(url)
+        resp = await self.client.get(url, headers=self._get_headers())
         resp.raise_for_status()
         return resp.json()
 
     async def get_media_url(self, media_id: str) -> str:
         """Fetch media URL from Meta Graph API."""
         url = f"{self.base_url}/{media_id}"
-        resp = await self.client.get(url)
+        resp = await self.client.get(url, headers=self._get_headers())
         resp.raise_for_status()
         return resp.json().get("url")
 
     async def stream_media_file(self, media_url: str):
         """Return a generator for streaming reading"""
-        async with self.client.stream("GET", media_url) as response:
+        async with self.client.stream(
+            "GET", media_url, headers=self._get_headers()
+        ) as response:
             response.raise_for_status()
             async for chunk in response.aiter_bytes():
                 yield chunk
@@ -104,6 +117,6 @@ class MetaClient:
     async def fetch_templates(self, waba_id: str):
         """Fetch message template for a WABA account."""
         url = f"{self.base_url}/{waba_id}/message_templates"
-        resp = await self.client.get(url)
+        resp = await self.client.get(url, headers=self._get_headers())
         resp.raise_for_status()
         return resp.json()

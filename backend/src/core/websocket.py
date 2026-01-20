@@ -3,8 +3,8 @@ import json
 
 from fastapi import WebSocket
 from loguru import logger
-from src.core.config import settings
-from src.core.redis import get_redis
+
+from src.core.broker import broker
 
 
 class ConnectionManager:
@@ -36,43 +36,61 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def redis_listener():
-    """Listen to the Redis channel and sends messages via WebSocket Manager"""
-    logger.info("Starting Redis Listener...")
+async def nats_listener():
+    """Listen to NATS ws_updates subject and broadcast to WebSocket clients"""
+    logger.info("Starting NATS Listener for WebSocket updates...")
 
     while True:
-        pubsub = None
         try:
-            redis = get_redis()
-            pubsub = redis.pubsub()
-            await pubsub.subscribe("ws_updates")
+            if not broker._connection:
+                logger.warning("NATS broker not connected, waiting...")
+                await asyncio.sleep(2)
+                continue
 
-            logger.info("Redis Pub/Sub connected.")
+            js = broker._connection.jetstream()
 
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    raw_data = message["data"]
+            try:
+                await js.add_stream(
+                    name="ws_updates",
+                    subjects=["ws_updates"],
+                    retention="limits",
+                    max_msgs=10000,
+                    max_age=300,
+                    discard="old",
+                )
+            except Exception:
+                pass
 
-                    try:
-                        payload = json.loads(raw_data)
+            psub = await js.pull_subscribe("ws_updates", "ws-broadcaster")
+            logger.info("NATS Pub/Sub connected for WebSocket updates")
 
-                        event_name = (
-                            payload.get("event") or payload.get("type") or "unknown"
-                        )
-
-                        logger.info(f"WS sending: {event_name}")
-                        await manager.broadcast(payload)
-                    except json.JSONDecodeError:
-                        logger.error(f"Failed to decode Redis message: {raw_data}")
-                    except Exception as e:
-                        logger.error(f"Error broadcasting message: {e}")
+            while True:
+                try:
+                    messages = await psub.fetch(batch=1, timeout=1.0)
+                    for msg in messages:
+                        try:
+                            payload = json.loads(msg.data.decode())
+                            event_name = (
+                                payload.get("event") or payload.get("type") or "unknown"
+                            )
+                            logger.info(f"WS sending: {event_name}")
+                            await manager.broadcast(payload)
+                            await msg.ack()
+                        except json.JSONDecodeError:
+                            logger.error(f"Failed to decode NATS message: {msg.data}")
+                            await msg.ack()
+                        except Exception as e:
+                            logger.error(f"Error broadcasting message: {e}")
+                            await msg.ack()
+                except TimeoutError:
+                    continue
+                except Exception as e:
+                    logger.error(f"Error fetching messages: {e}")
+                    await asyncio.sleep(1)
 
         except asyncio.CancelledError:
-            logger.info("Redis listener cancelled.")
+            logger.info("NATS listener cancelled.")
             break
         except Exception as e:
-            logger.error(f"Redis connection lost: {e}. Reconnecting...")
+            logger.error(f"NATS connection lost: {e}. Reconnecting...")
             await asyncio.sleep(5)
-        finally:
-            if pubsub:
-                await pubsub.close()
