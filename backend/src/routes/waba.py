@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Request
 
+from src.core.broker import broker
 from src.core.dependencies import get_uow
 from src.core.exceptions import ServiceUnavailableError
 from src.core.uow import UnitOfWork
@@ -13,7 +14,6 @@ from src.schemas import (
     WabaSyncRequest,
     WabaSyncResponse,
 )
-from src.worker import handle_account_sync_task
 
 router = APIRouter(prefix="", tags=["WABA"])
 
@@ -28,7 +28,8 @@ async def get_waba_settings(uow: UnitOfWork = Depends(get_uow)):
         if not account:
             from fastapi import HTTPException
 
-            raise HTTPException(status_code=404, detail="WABA account not found")
+            raise HTTPException(
+                status_code=404, detail="WABA account not found")
         return account
 
 
@@ -76,9 +77,14 @@ async def trigger_waba_sync(request: Request):
     sync_request = WabaSyncRequest(request_id=request_id)
 
     try:
-        await handle_account_sync_task.kiq(sync_request)
+        # Publish sync request to NATS
+        await broker.publish(
+            sync_request.model_dump(),
+            subject="sync.account_data",
+        )
     except Exception as e:
-        raise ServiceUnavailableError(detail=f"Failed to enqueue sync task. Error: {e}")
+        raise ServiceUnavailableError(
+            detail=f"Failed to enqueue sync task. Error: {e}")
 
     return {
         "status": "sync_started",

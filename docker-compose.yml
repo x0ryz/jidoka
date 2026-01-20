@@ -1,13 +1,23 @@
 services:
+  nats:
+    image: nats:2.10-alpine
+    restart: always
+    command: "-js -m 8222"
+    expose:
+      - "4222"
+      - "8222"
+    volumes:
+      - nats:/data
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     restart: always
     volumes:
-      - ./temp_media:/app/temp_media
+      - tmp:/tmp
     env_file: .env
-    command: sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"
 
   worker:
     build:
@@ -15,17 +25,9 @@ services:
       dockerfile: Dockerfile
     restart: always
     volumes:
-      - ./temp_media:/app/temp_media
+      - tmp:/tmp
     env_file: .env
-    command: taskiq worker src.core.broker:broker src.worker
-
-  scheduler:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    restart: always
-    env_file: .env
-    command: taskiq scheduler src.core.broker:scheduler src.worker
+    command: faststream run src.worker.main:app --workers 1
 
   frontend:
     build:
@@ -34,3 +36,7 @@ services:
     restart: always
     depends_on:
       - backend
+
+volumes:
+  tmp:
+  nats:

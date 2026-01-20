@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from loguru import logger
 
+from src.core.broker import broker
 from src.core.dependencies import get_contact_import_service, get_uow
 from src.core.exceptions import BadRequestError, NotFoundError, ServiceUnavailableError
 from src.core.uow import UnitOfWork
@@ -17,7 +18,6 @@ from src.schemas import (
     ContactImportResult,
 )
 from src.services.campaign.importer import ContactImportService
-from src.worker import handle_campaign_resume_task, handle_campaign_start_task
 
 router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
 
@@ -172,7 +172,8 @@ async def schedule_campaign(
         campaign.updated_at = now
         uow.session.add(campaign)
 
-        logger.info(f"Campaign scheduled: {campaign_id} at {data.scheduled_at}")
+        logger.info(
+            f"Campaign scheduled: {campaign_id} at {data.scheduled_at}")
         return campaign
 
 
@@ -204,7 +205,12 @@ async def start_campaign_now(
                 )
 
         try:
-            await handle_campaign_start_task.kiq(str(campaign_id))
+            # Publish campaign start event to NATS
+            await broker.publish(
+                str(campaign_id),
+                subject="campaigns.start",
+                stream="campaigns",
+            )
             logger.info(f"Campaign start published: {campaign_id}")
         except Exception as e:
             logger.error(f"Failed to publish campaign start: {e}")
@@ -248,7 +254,12 @@ async def resume_campaign(
             raise BadRequestError(detail="Can only resume paused campaigns")
 
         try:
-            await handle_campaign_resume_task.kiq(str(campaign_id))
+            # Publish campaign resume event to NATS
+            await broker.publish(
+                str(campaign_id),
+                subject="campaigns.resume",
+                stream="campaigns",
+            )
             logger.info(f"Campaign resume published: {campaign_id}")
         except Exception as e:
             logger.error(f"Failed to publish campaign resume: {e}")

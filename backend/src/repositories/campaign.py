@@ -103,7 +103,7 @@ class CampaignContactRepository(BaseRepository[CampaignContact]):
         await self.session.flush()
 
     async def get_sendable_contacts(
-        self, campaign_id: UUID, limit: int = 500
+        self, campaign_id: UUID, limit: int = 500, offset: int = 0
     ) -> list[CampaignContact]:
         stmt = (
             select(CampaignContact)
@@ -112,6 +112,7 @@ class CampaignContactRepository(BaseRepository[CampaignContact]):
                 CampaignContact.status == CampaignDeliveryStatus.QUEUED,
             )
             .options(selectinload(CampaignContact.contact))
+            .offset(offset)
             .limit(limit)
         )
 

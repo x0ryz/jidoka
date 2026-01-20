@@ -4,11 +4,11 @@ import json
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from loguru import logger
+from src.core.broker import broker
 from src.core.dependencies import get_uow
 from src.core.exceptions import AuthError, BadRequestError
 from src.core.uow import UnitOfWork
 from src.schemas import WebhookEvent
-from src.worker import handle_raw_webhook_task
 
 router = APIRouter(prefix="/webhook", tags=["Webhooks"])
 
@@ -18,7 +18,8 @@ def verify_signature(raw_body: bytes, signature: str | None, app_secret: str) ->
     Перевіряє підпис вебхука, використовуючи переданий app_secret.
     """
     if not app_secret:
-        logger.critical("META_APP_SECRET is not set! Webhook security is compromised.")
+        logger.critical(
+            "META_APP_SECRET is not set! Webhook security is compromised.")
         raise AuthError(detail="Server misconfiguration")
 
     if not signature:
@@ -97,7 +98,11 @@ async def receive_webhook(
 
     try:
         event = WebhookEvent(payload=data)
-        await handle_raw_webhook_task.kiq(event)
+        # Publish webhook event to NATS
+        await broker.publish(
+            event.model_dump(),
+            subject="webhooks.raw",
+        )
 
     except Exception as e:
         logger.error(f"Error processing webhook structure: {e}")

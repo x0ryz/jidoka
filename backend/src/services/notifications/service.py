@@ -1,8 +1,8 @@
-import json
 from uuid import UUID
 
 from loguru import logger
-from src.core.redis import get_redis
+
+from src.core.broker import broker
 from src.models import Message, get_utc_now
 from src.schemas.events import (
     BatchProgressEvent,
@@ -15,11 +15,12 @@ from src.schemas.events import (
 
 class NotificationService:
     async def _publish(self, event_data: dict):
-        """Low-level publish to Redis"""
+        """Low-level publish to NATS"""
         try:
-            redis = get_redis()
-            message_json = json.dumps(event_data, default=str)
-            await redis.publish("ws_updates", message_json)
+            await broker.publish(
+                event_data,
+                subject="ws_updates",
+            )
         except Exception as e:
             logger.error(f"Failed to publish WS update: {e}")
 

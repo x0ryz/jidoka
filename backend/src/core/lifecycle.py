@@ -7,41 +7,25 @@ from fastapi import FastAPI
 from src.core.broker import broker
 from src.core.database import engine
 from src.core.logger import setup_logging
-from src.core.redis import close_redis, init_redis, redis_client
-from src.core.websocket import redis_listener
+from src.core.websocket import nats_listener
 
 logger = setup_logging()
 
-# Module-level set to track background tasks
 background_tasks: Set[asyncio.Task] = set()
-
-
-# Startup functions
-
-
-async def initialize_redis(app: FastAPI) -> None:
-    """Initialize Redis connection and attach to app state."""
-    await init_redis()
-    app.state.redis = redis_client
-    logger.info("Redis pool initialized")
 
 
 async def start_websocket_listener() -> None:
     """Start the WebSocket listener as a background task."""
-    ws_task = asyncio.create_task(redis_listener())
+    ws_task = asyncio.create_task(nats_listener())
     background_tasks.add(ws_task)
     ws_task.add_done_callback(background_tasks.discard)
     logger.info("WebSocket listener started")
 
 
 async def initialize_broker() -> None:
-    """Initialize the task broker if not in worker process."""
-    if not broker.is_worker_process:
-        await broker.startup()
-        logger.info("Broker started")
-
-
-# Shutdown functions
+    """Initialize the NATS broker for publishing (not worker mode)."""
+    await broker.connect()
+    logger.info("NATS broker connected for publishing")
 
 
 async def shutdown_background_tasks() -> None:
@@ -56,16 +40,9 @@ async def shutdown_background_tasks() -> None:
 
 
 async def shutdown_broker() -> None:
-    """Shutdown the task broker if not in worker process."""
-    if not broker.is_worker_process:
-        await broker.shutdown()
-        logger.info("Broker shutdown")
-
-
-async def shutdown_redis() -> None:
-    """Close Redis connection."""
-    await close_redis()
-    logger.info("Redis client closed")
+    """Shutdown the NATS broker connection."""
+    await broker.stop()
+    logger.info("NATS broker disconnected")
 
 
 async def shutdown_database() -> None:
@@ -74,24 +51,17 @@ async def shutdown_database() -> None:
     logger.info("Database engine disposed")
 
 
-# Main lifespan context manager
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle: startup and shutdown."""
     logger.info("Lifespan: Starting up...")
 
-    # Startup sequence
-    await initialize_redis(app)
     await start_websocket_listener()
     await initialize_broker()
 
     yield
 
-    # Shutdown sequence
     logger.info("Lifespan: Shutting down...")
     await shutdown_background_tasks()
     await shutdown_broker()
-    await shutdown_redis()
     await shutdown_database()

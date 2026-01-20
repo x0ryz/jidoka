@@ -114,3 +114,24 @@ class MessageSendResponse(BaseModel):
             }
         }
     )
+
+
+class MediaSendRequest(BaseModel):
+    """Schema for the media sending task (messages.media_send)"""
+
+    phone_number: str
+    file_path: str
+    filename: str
+    mime_type: str
+    caption: str | None = None
+    request_id: str | None = None
+
+
+class MediaDownloadRequest(BaseModel):
+    """Schema for the media download task (media.download)"""
+
+    message_id: str
+    meta_media_id: str
+    media_type: str
+    mime_type: str
+    caption: str | None = None

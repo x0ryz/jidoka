@@ -1,10 +1,10 @@
 import os
+import tempfile
 import uuid
 
 import aiofiles
 from fastapi import (
     APIRouter,
-    Depends,
     File,
     Form,
     HTTPException,
@@ -14,16 +14,14 @@ from fastapi import (
     status,
 )
 from loguru import logger
-from src.core.dependencies import get_uow
-from src.core.uow import UnitOfWork
+
+from src.core.broker import broker
 from src.core.websocket import manager
 from src.schemas import MessageCreate, MessageSendResponse, WhatsAppMessage
-from src.worker import handle_media_send_task, handle_messages_task
 
 router = APIRouter(tags=["Messages"])
 
-TEMP_MEDIA_DIR = "temp_media"
-os.makedirs(TEMP_MEDIA_DIR, exist_ok=True)
+TEMP_MEDIA_DIR = tempfile.gettempdir()
 
 
 @router.websocket("/ws/messages")
@@ -62,7 +60,11 @@ async def send_message(data: MessageCreate):
         reply_to_message_id=data.reply_to_message_id,
     )
 
-    await handle_messages_task.kiq(message_obj)
+    # Publish message to NATS
+    await broker.publish(
+        message_obj.model_dump(),
+        subject="messages.manual_send",
+    )
 
     return MessageSendResponse(
         status="queued", message_id=uuid.uuid4(), request_id=request_id
@@ -124,7 +126,8 @@ async def send_media_message(
     try:
         # Stream write to disk (better for RAM than read())
         async with aiofiles.open(file_path, "wb") as out_file:
-            while content := await file.read(1024 * 1024):  # Read in 1MB chunks
+            # Read in 1MB chunks
+            while content := await file.read(1024 * 1024):
                 await out_file.write(content)
 
         # Get file size for validation AFTER saving (or check Content-Length header)
@@ -137,14 +140,17 @@ async def send_media_message(
 
         mime_type = file.content_type or "application/octet-stream"
 
-        # Pass the PATH, not the bytes
-        await handle_media_send_task.kiq(
-            phone_number=phone_number,
-            file_path=file_path,
-            filename=file.filename,
-            mime_type=mime_type,
-            caption=caption,
-            request_id=request_id,
+        # Publish media send message to NATS
+        await broker.publish(
+            {
+                "phone_number": phone_number,
+                "file_path": file_path,
+                "filename": file.filename,
+                "mime_type": mime_type,
+                "caption": caption,
+                "request_id": request_id,
+            },
+            subject="messages.media_send",
         )
 
         return MessageSendResponse(

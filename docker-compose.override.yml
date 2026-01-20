@@ -18,54 +18,33 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    restart: always
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    ports:
-      - "6379:6379"
-    networks:
-      - default
-
   backend:
     container_name: jidoka_app_dev
     volumes:
-      - ./backend:/app
       - /app/.venv
+      - ./backend:/app
     ports:
       - "8000:8000"
     command: sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+      nats:
+        condition: service_started
 
   worker:
     container_name: jidoka_worker_dev
     volumes:
       - ./backend:/app
       - /app/.venv
-    command: taskiq worker src.core.broker:broker src.worker
+    command: faststream run src.worker.main:app --workers 1
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  scheduler:
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - default
 
   frontend:
     build:
@@ -85,4 +64,3 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
