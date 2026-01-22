@@ -419,6 +419,9 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
                         Спроби
                       </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                        Додаткові дані
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -439,6 +442,20 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {contact.retry_count}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {contact.custom_data && Object.keys(contact.custom_data).length > 0 ? (
+                            <div className="max-w-xs">
+                              {Object.entries(contact.custom_data).map(([key, value]) => (
+                                <div key={key} className="text-xs">
+                                  <span className="font-medium text-gray-700">{key}:</span>{" "}
+                                  <span className="text-gray-900">{String(value)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            "-"
+                          )}
                         </td>
                       </tr>
                     ))}
