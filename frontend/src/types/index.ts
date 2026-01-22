@@ -222,9 +222,14 @@ export interface Template {
   status: string;
   category: string;
   components: TemplateComponent[];
+  default_variable_mapping?: Record<string, string>;
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface TemplateUpdate {
+  default_variable_mapping?: Record<string, string>;
 }
 
 export interface TemplateComponent {

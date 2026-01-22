@@ -17,6 +17,7 @@ import {
   MessageResponse,
   MessageSendResponse,
   Template,
+  TemplateUpdate,
   DashboardStats,
   RecentActivity,
   MessagesTimeline,
@@ -417,6 +418,17 @@ import {
   async getTemplatesByStatus(statusFilter: string): Promise<any> {
     const response = await this.client.get(
       `/templates/by-status/${statusFilter}`,
+    );
+    return response.data;
+  }
+
+  async updateTemplate(
+    templateId: string,
+    data: TemplateUpdate,
+  ): Promise<Template> {
+    const response = await this.client.patch<Template>(
+      `/templates/${templateId}`,
+      data,
     );
     return response.data;
   }

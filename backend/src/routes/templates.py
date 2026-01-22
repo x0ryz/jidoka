@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.dependencies import get_session
 from src.core.exceptions import NotFoundError
 from src.repositories.template import TemplateRepository
-from src.schemas import TemplateListResponse, TemplateResponse
+from src.schemas import TemplateListResponse, TemplateResponse, TemplateUpdate
 
 router = APIRouter(prefix="/templates", tags=["Templates"])
 
@@ -43,3 +43,29 @@ async def get_templates_by_status(
 ):
     """Get templates filtered by status."""
     return await TemplateRepository(session).get_by_status(status_filter)
+
+
+@router.patch("/{template_id}", response_model=TemplateResponse)
+async def update_template(
+    template_id: UUID,
+    data: TemplateUpdate,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Update template settings (e.g., default variable mapping).
+    """
+    repo = TemplateRepository(session)
+    template = await repo.get_by_id(template_id)
+
+    if not template:
+        raise NotFoundError(detail="Template not found")
+
+    # Update fields
+    if data.default_variable_mapping is not None:
+        template.default_variable_mapping = data.default_variable_mapping
+
+    session.add(template)
+    await session.commit()
+    await session.refresh(template)
+
+    return template

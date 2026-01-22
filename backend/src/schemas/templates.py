@@ -16,6 +16,7 @@ class TemplateResponse(UUIDMixin, TimestampMixin):
     status: str
     category: str
     components: list[dict[str, Any]] = Field(default_factory=list)
+    default_variable_mapping: dict[str, str] | None = None
     is_deleted: bool = False
 
     model_config = ConfigDict(
@@ -47,6 +48,21 @@ class TemplateListResponse(UUIDMixin, TimestampMixin):
     status: str
     category: str
     components: list[dict[str, Any]] = Field(default_factory=list)
+    default_variable_mapping: dict[str, str] | None = None
     is_deleted: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TemplateUpdate(BaseModel):
+    """Template update schema"""
+
+    default_variable_mapping: dict[str, str] | None = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "default_variable_mapping": {"1": "name", "2": "phone_number"}
+            }
+        }
+    )

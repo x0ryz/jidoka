@@ -28,6 +28,8 @@ class Template(Base, UUIDMixin, TimestampMixin):
 
     components: Mapped[list[dict[str, Any]]
                        ] = mapped_column(JSONB, default=list)
+    default_variable_mapping: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(
         Boolean, default=False, index=True)
 
