@@ -166,6 +166,7 @@ export interface CampaignContactResponse {
   contact_id: string;
   phone_number: string;
   name: string | null;
+  custom_data: Record<string, any>;
   status: ContactStatus;
   last_sent_at: string | null;
   error_message: string | null;

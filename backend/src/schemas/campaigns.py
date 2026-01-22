@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import AliasPath, BaseModel, ConfigDict, Field, computed_field
@@ -103,9 +103,14 @@ class CampaignContactResponse(BaseModel):
 
     id: UUID
     contact_id: UUID
-    phone_number: str = Field(validation_alias=AliasPath("contact", "phone_number"))
+    phone_number: str = Field(
+        validation_alias=AliasPath("contact", "phone_number"))
     name: str | None = Field(
         default=None, validation_alias=AliasPath("contact", "name")
+    )
+    custom_data: dict[str, Any] = Field(
+        default_factory=dict, validation_alias=AliasPath(
+            "contact", "custom_data")
     )
     status: CampaignDeliveryStatus
     error_message: str | None = None
