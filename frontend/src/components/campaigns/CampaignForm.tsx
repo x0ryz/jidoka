@@ -56,6 +56,16 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
     }
   }, [messageType]);
 
+  // Auto-fill variable mapping when template is selected
+  useEffect(() => {
+    if (templateId && templates.length > 0) {
+      const selectedTemplate = templates.find((t) => t.id === templateId);
+      if (selectedTemplate?.default_variable_mapping && !initialData?.variable_mapping) {
+        setVariableMapping(selectedTemplate.default_variable_mapping);
+      }
+    }
+  }, [templateId, templates]);
+
   const loadTemplates = async () => {
     try {
       setLoadingTemplates(true);

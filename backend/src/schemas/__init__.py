@@ -38,7 +38,7 @@ from .messages import (
 )
 
 # Templates
-from .templates import TemplateListResponse, TemplateResponse
+from .templates import TemplateListResponse, TemplateResponse, TemplateUpdate
 
 # WABA
 from .waba import (

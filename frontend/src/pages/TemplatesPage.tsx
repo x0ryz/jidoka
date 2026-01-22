@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../api';
 import { Template } from '../types';
+import TemplateDefaultMappingEditor from '../components/templates/TemplateDefaultMappingEditor';
 
 const TemplatesPage: React.FC = () => {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -243,6 +244,20 @@ const TemplatesPage: React.FC = () => {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                {/* Default Variable Mapping */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Дефолтний маппінг змінних</h3>
+                  <TemplateDefaultMappingEditor
+                    template={selectedTemplate}
+                    onUpdate={(updatedTemplate) => {
+                      setSelectedTemplate(updatedTemplate);
+                      setTemplates(templates.map(t => 
+                        t.id === updatedTemplate.id ? updatedTemplate : t
+                      ));
+                    }}
+                  />
                 </div>
 
                 {selectedTemplate.components && selectedTemplate.components.length > 0 && (
