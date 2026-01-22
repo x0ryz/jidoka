@@ -30,6 +30,7 @@ import {
     WabaStatusResponse,
     WabaPhoneNumbersResponse,
     Tag,
+    AvailableFieldsResponse,
   } from "../types";
   
   export class ApiClient {
@@ -138,6 +139,13 @@ import {
   
     async markContactAsRead(contactId: string): Promise<void> {
       await this.client.post(`/contacts/${contactId}/read`);
+    }
+  
+    async getAvailableFields(): Promise<AvailableFieldsResponse> {
+      const response = await this.client.get<AvailableFieldsResponse>(
+        "/contacts/fields/available"
+      );
+      return response.data;
     }
   
     async getChatHistory(

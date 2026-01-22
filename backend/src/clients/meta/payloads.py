@@ -36,6 +36,7 @@ class MetaPayloadBuilder:
         to_phone: str,
         template_name: str,
         language_code: str = "en_US",
+        parameters: list[dict] | None = None,
         context_wamid: str | None = None,
     ) -> dict:
         """
@@ -45,20 +46,32 @@ class MetaPayloadBuilder:
             to_phone: Recipient phone number
             template_name: Name of the approved template
             language_code: Template language code
+            parameters: Optional template parameters for variable substitution
             context_wamid: Optional WAMID of message being replied to
 
         Returns:
             dict: Meta API payload
         """
+        template_payload = {
+            "name": template_name,
+            "language": {"code": language_code},
+        }
+
+        # Add parameters if provided
+        if parameters:
+            template_payload["components"] = [
+                {
+                    "type": "body",
+                    "parameters": parameters,
+                }
+            ]
+
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
             "to": to_phone,
             "type": "template",
-            "template": {
-                "name": template_name,
-                "language": {"code": language_code},
-            },
+            "template": template_payload,
         }
 
         if context_wamid:

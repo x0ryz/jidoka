@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.core.database import Base
 from src.models.base import (
@@ -32,6 +32,7 @@ class Campaign(Base, UUIDMixin, TimestampMixin):
         ForeignKey("templates.id"), nullable=True
     )
     message_body: Mapped[str | None] = mapped_column(String, nullable=True)
+    variable_mapping: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     scheduled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

@@ -209,3 +209,34 @@ async def mark_contact_read(
 ):
     """Mark all messages from a contact as read."""
     await chat_service.mark_conversation_as_read(contact_id)
+
+
+@router.get("/contacts/fields/available")
+async def get_available_fields(
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Get all available fields from all contacts in the system.
+    Returns standard fields and all unique custom_data keys.
+    """
+    repo = ContactRepository(session)
+
+    # Get all contacts with custom_data
+    contacts = await repo.get_paginated(limit=10000, offset=0)
+
+    # Standard fields that are always available
+    standard_fields = ["name", "phone_number"]
+
+    # Collect all unique custom_data keys
+    custom_fields_set = set()
+    for contact in contacts:
+        if contact.custom_data:
+            custom_fields_set.update(contact.custom_data.keys())
+
+    custom_fields = sorted(list(custom_fields_set))
+
+    return {
+        "standard_fields": standard_fields,
+        "custom_fields": custom_fields,
+        "total_contacts": len(contacts),
+    }

@@ -4,9 +4,11 @@ import {
   CampaignUpdate,
   MessageType,
   WabaPhoneNumberResponse,
+  AvailableFieldsResponse,
 } from "../../types";
 import { apiClient } from "../../api";
 import { Template } from "../../types";
+import { TemplateVariableMapper } from "./TemplateVariableMapper";
 
 interface CampaignFormProps {
   initialData?: CampaignCreate | CampaignUpdate;
@@ -33,13 +35,19 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
   const [messageBody, setMessageBody] = useState(
     initialData?.message_body || "",
   );
+  const [variableMapping, setVariableMapping] = useState<Record<string, string>>(
+    initialData?.variable_mapping || {}
+  );
   const [templates, setTemplates] = useState<Template[]>([]);
   const [wabaPhones, setWabaPhones] = useState<WabaPhoneNumberResponse[]>([]);
+  const [availableFields, setAvailableFields] = useState<AvailableFieldsResponse | null>(null);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [loadingPhones, setLoadingPhones] = useState(false);
+  const [loadingFields, setLoadingFields] = useState(false);
 
   useEffect(() => {
     loadWabaPhones();
+    loadAvailableFields();
   }, []);
 
   useEffect(() => {
@@ -71,6 +79,18 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
       setLoadingPhones(false);
     }
   };
+  
+  const loadAvailableFields = async () => {
+    try {
+      setLoadingFields(true);
+      const data = await apiClient.getAvailableFields();
+      setAvailableFields(data);
+    } catch (error) {
+      console.error("Помилка завантаження доступних полів:", error);
+    } finally {
+      setLoadingFields(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,6 +102,10 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
           messageType === MessageType.TEMPLATE ? templateId || null : null,
         message_body:
           messageType === MessageType.TEXT ? messageBody || null : null,
+        variable_mapping:
+          messageType === MessageType.TEMPLATE && Object.keys(variableMapping).length > 0
+            ? variableMapping
+            : null,
       };
       await onSubmit(data);
     } else {
@@ -93,6 +117,10 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
         waba_phone_id: wabaPhoneId || null,
         message_body:
           messageType === MessageType.TEXT ? messageBody || null : null,
+        variable_mapping:
+          messageType === MessageType.TEMPLATE && Object.keys(variableMapping).length > 0
+            ? variableMapping
+            : null,
       };
       await onSubmit(data);
     }
@@ -175,6 +203,15 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
             </select>
           )}
         </div>
+      )}
+      
+      {messageType === MessageType.TEMPLATE && templateId && (
+        <TemplateVariableMapper
+          template={templates.find((t) => t.id === templateId) || null}
+          variableMapping={variableMapping}
+          onChange={setVariableMapping}
+          availableFields={availableFields}
+        />
       )}
 
       {messageType === MessageType.TEXT && (

@@ -245,6 +245,7 @@ class MessageSenderService:
         template_id: uuid.UUID | None = None,
         template_name: str | None = None,
         template_language_code: str | None = None,
+        template_parameters: list[dict] | None = None,
         is_campaign: bool = False,
         reply_to_message_id: uuid.UUID | None = None,
         phone_id: str | None = None,
@@ -326,6 +327,7 @@ class MessageSenderService:
                 body=body,
                 template_name=template_name,
                 template_language_code=template_language_code,
+                template_parameters=template_parameters,
                 context_wamid=context_wamid,
             )
 
@@ -384,6 +386,7 @@ class MessageSenderService:
         body: str,
         template_name: str | None,
         template_language_code: str | None = None,
+        template_parameters: list[dict] | None = None,
         context_wamid: str | None = None,
     ) -> dict:
         """Build WhatsApp API payload using MetaPayloadBuilder."""
@@ -400,6 +403,7 @@ class MessageSenderService:
                 to_phone=to_phone,
                 template_name=template_name,
                 language_code=template_language_code or "en_US",
+                parameters=template_parameters,
                 context_wamid=context_wamid,
             )
         else:

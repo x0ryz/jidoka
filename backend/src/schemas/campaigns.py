@@ -17,6 +17,7 @@ class CampaignCreate(BaseModel):
     template_id: UUID | None = None
     waba_phone_id: UUID | None = None
     message_body: str | None = None
+    variable_mapping: dict[str, str] | None = None
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -36,6 +37,7 @@ class CampaignUpdate(BaseModel):
     message_type: Literal["text", "template"] | None = None
     template_id: UUID | None = None
     message_body: str | None = None
+    variable_mapping: dict[str, str] | None = None
 
 
 class CampaignSchedule(BaseModel):
@@ -58,6 +60,7 @@ class CampaignResponse(UUIDMixin, TimestampMixin):
     message_type: str
     template_id: UUID | None = None
     message_body: str | None = None
+    variable_mapping: dict[str, str] | None = None
     scheduled_at: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None

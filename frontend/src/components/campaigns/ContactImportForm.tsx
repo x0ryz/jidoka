@@ -14,12 +14,12 @@ const ContactImportForm: React.FC<ContactImportFormProps> = ({
 }) => {
   const [importMethod, setImportMethod] = useState<"manual" | "file">("manual");
   const [contacts, setContacts] = useState<ContactImport[]>([
-    { phone_number: "", name: "", tags: [] },
+    { phone_number: "", name: "", tags: [], custom_data: {} },
   ]);
   const [file, setFile] = useState<File | null>(null);
 
   const addContactRow = () => {
-    setContacts([...contacts, { phone_number: "", name: "", tags: [] }]);
+    setContacts([...contacts, { phone_number: "", name: "", tags: [], custom_data: {} }]);
   };
 
   const removeContactRow = (index: number) => {
@@ -34,6 +34,38 @@ const ContactImportForm: React.FC<ContactImportFormProps> = ({
     const updated = [...contacts];
     updated[index] = { ...updated[index], [field]: value };
     setContacts(updated);
+  };
+
+  const updateCustomData = (index: number, customData: Record<string, any>) => {
+    const updated = [...contacts];
+    updated[index] = { ...updated[index], custom_data: customData };
+    setContacts(updated);
+  };
+
+  const parseCustomDataString = (input: string): Record<string, any> => {
+    if (!input.trim()) return {};
+    try {
+      // Try parsing as JSON first
+      return JSON.parse(input);
+    } catch {
+      // Fall back to key:value format
+      const result: Record<string, any> = {};
+      const pairs = input.split(",").map((s) => s.trim()).filter(Boolean);
+      for (const pair of pairs) {
+        const [key, ...valueParts] = pair.split(":");
+        if (key && valueParts.length > 0) {
+          result[key.trim()] = valueParts.join(":").trim();
+        }
+      }
+      return result;
+    }
+  };
+
+  const customDataToString = (data: Record<string, any>): string => {
+    if (!data || Object.keys(data).length === 0) return "";
+    return Object.entries(data)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join(", ");
   };
 
   const handleManualSubmit = async (e: React.FormEvent) => {
@@ -130,6 +162,18 @@ const ContactImportForm: React.FC<ContactImportFormProps> = ({
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
+                <textarea
+                  placeholder="Додаткові поля (key: value, key2: value2 або JSON)"
+                  value={customDataToString(contact.custom_data || {})}
+                  onChange={(e) =>
+                    updateCustomData(index, parseCustomDataString(e.target.value))
+                  }
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Приклад: city: Київ, order_id: 12345 або {"{"}"city": "Київ", "order_id": "12345"{"}"}
+                </p>
               </div>
             ))}
           </div>
@@ -161,7 +205,7 @@ const ContactImportForm: React.FC<ContactImportFormProps> = ({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Файл (CSV або Excel)
-            </label>
+            </label> CSV/Excel: phone_number, name, tags (теги через крапку з комою), додаткові колонки будуть збережені як custom_data
             <input
               type="file"
               accept=".csv,.xlsx,.xls"

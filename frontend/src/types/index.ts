@@ -67,6 +67,7 @@ export interface Contact {
   last_message_at: string | null;
   source: string | null;
   tags: Tag[];
+  custom_data?: Record<string, any>;
   created_at: string;
   updated_at: string;
   last_message_body?: string | null;
@@ -82,18 +83,21 @@ export interface ContactCreate {
   phone_number: string;
   name?: string | null;
   tag_ids?: string[];
+  custom_data?: Record<string, any>;
 }
 
 export interface ContactUpdate {
   name?: string | null;
   status?: ContactStatus;
   tag_ids?: string[] | null;
+  custom_data?: Record<string, any>;
 }
 
 export interface ContactImport {
   phone_number: string;
   name?: string | null;
   tags?: string[];
+  custom_data?: Record<string, any>;
 }
 
 export interface ContactImportResult {
@@ -129,6 +133,7 @@ export interface CampaignCreate {
   message_type?: MessageType;
   template_id?: string | null;
   message_body?: string | null;
+  variable_mapping?: Record<string, string> | null;
 }
 
 export interface CampaignUpdate {
@@ -136,6 +141,7 @@ export interface CampaignUpdate {
   message_type?: MessageType | null;
   template_id?: string | null;
   message_body?: string | null;
+  variable_mapping?: Record<string, string> | null;
 }
 
 export interface CampaignStats {
@@ -346,3 +352,32 @@ export interface WabaStatusResponse {
   accounts: WabaAccountStatus[];
   phone_numbers: WabaPhoneStatus[];
 }
+<<<<<<< HEAD
+=======
+
+export interface WabaPhoneNumberResponse {
+  id: string;
+  display_phone_number: string;
+  quality_rating: string;
+}
+
+export interface WabaPhoneNumbersResponse {
+  phone_numbers: WabaPhoneNumberResponse[];
+}
+
+export interface WabaSettingsResponse {
+  id: string;
+  waba_id: string;
+  name: string;
+  account_review_status: string | null;
+  business_verification_status: string | null;
+  graph_api_version: string | null;
+}
+
+// Available Fields Response
+export interface AvailableFieldsResponse {
+  standard_fields: string[];
+  custom_fields: string[];
+  total_contacts: number;
+}
+>>>>>>> 88ae797 (feat: add variable mapping to campaigns and enhance contact import functionality)

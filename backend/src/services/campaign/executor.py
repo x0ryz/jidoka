@@ -12,9 +12,11 @@ from src.models import (
 )
 from src.repositories.campaign import CampaignContactRepository, CampaignRepository
 from src.repositories.contact import ContactRepository
+from src.repositories.template import TemplateRepository
 from src.services.campaign.tracker import CampaignProgressTracker
 from src.services.messaging.sender import MessageSenderService
 from src.services.notifications.service import NotificationService
+from src.utils.template_renderer import render_template_params, count_template_parameters
 
 
 class CampaignMessageExecutor:
@@ -26,6 +28,7 @@ class CampaignMessageExecutor:
         campaigns_repo: CampaignRepository,
         campaign_contacts_repo: CampaignContactRepository,
         contacts_repo: ContactRepository,
+        template_repo: TemplateRepository,
         message_sender: MessageSenderService,
         notifier: NotificationService,
         trackers: dict[str, CampaignProgressTracker],
@@ -34,6 +37,7 @@ class CampaignMessageExecutor:
         self.campaigns = campaigns_repo
         self.campaign_contacts = campaign_contacts_repo
         self.contacts = contacts_repo
+        self.template_repo = template_repo
         self.sender = message_sender
         self.notifier = notifier
         self.trackers = trackers
@@ -62,6 +66,29 @@ class CampaignMessageExecutor:
         template_name, body_text, template_language_code = self._prepare_message_data(
             campaign)
 
+        # Prepare template parameters based on variable_mapping
+        template_params = None
+        logger.info(
+            f"Campaign {campaign_id} variable_mapping: {campaign.variable_mapping} "
+            f"(type: {type(campaign.variable_mapping)}, len: {len(campaign.variable_mapping) if campaign.variable_mapping else 0})"
+        )
+        if campaign.message_type == "template" and campaign.variable_mapping and len(campaign.variable_mapping) > 0:
+            contact_data = {
+                "name": contact.name,
+                "phone_number": contact.phone_number,
+                "custom_data": contact.custom_data or {},
+            }
+            params = render_template_params(
+                campaign.variable_mapping,
+                contact_data,
+            )
+            logger.info(f"Rendered template params: {params}")
+            # Only set template_params if we have actual parameters
+            if params:
+                template_params = params
+
+        logger.info(f"Final template_params being sent: {template_params}")
+
         try:
             message = await self.sender.send_to_contact(
                 contact=contact,
@@ -70,6 +97,7 @@ class CampaignMessageExecutor:
                 template_id=campaign.template_id,
                 template_name=template_name,
                 template_language_code=template_language_code,
+                template_parameters=template_params,
                 is_campaign=True,
                 phone_id=str(campaign.waba_phone_id)
                 if campaign.waba_phone_id
