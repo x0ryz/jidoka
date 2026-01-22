@@ -304,6 +304,14 @@ const CampaignsPage: React.FC = () => {
   ) => {
     try {
       await apiClient.addContactsManually(campaignId, contacts);
+      // Оновлюємо кампанію щоб отримати новий total_contacts
+      const updatedCampaign = await apiClient.getCampaign(campaignId);
+      setCampaigns(prev => prev.map(c => 
+        c.id === campaignId ? updatedCampaign : c
+      ));
+      if (selectedCampaign?.id === campaignId) {
+        setSelectedCampaign(updatedCampaign);
+      }
       await loadCampaignDetails(campaignId);
       await loadCampaigns();
     } catch (error) {
@@ -315,6 +323,14 @@ const CampaignsPage: React.FC = () => {
   const handleImportContacts = async (campaignId: string, file: File) => {
     try {
       await apiClient.importContactsFromFile(campaignId, file);
+      // Оновлюємо кампанію щоб отримати новий total_contacts
+      const updatedCampaign = await apiClient.getCampaign(campaignId);
+      setCampaigns(prev => prev.map(c => 
+        c.id === campaignId ? updatedCampaign : c
+      ));
+      if (selectedCampaign?.id === campaignId) {
+        setSelectedCampaign(updatedCampaign);
+      }
       await loadCampaignDetails(campaignId);
       await loadCampaigns();
     } catch (error) {
