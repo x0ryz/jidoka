@@ -62,6 +62,7 @@ async def create_campaign(
         template_id=data.template_id,
         waba_phone_id=data.waba_phone_id,
         message_body=data.message_body,
+        variable_mapping=data.variable_mapping,
         status=CampaignStatus.DRAFT,
     )
 

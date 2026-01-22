@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models import Campaign
 from src.repositories.campaign import CampaignContactRepository, CampaignRepository
 from src.repositories.contact import ContactRepository
+from src.repositories.template import TemplateRepository
 from src.services.campaign.executor import CampaignMessageExecutor
 from src.services.campaign.lifecycle import CampaignLifecycleManager
 from src.services.campaign.tracker import CampaignProgressTracker
@@ -32,6 +33,7 @@ class CampaignSenderService:
         campaigns_repo = CampaignRepository(session)
         campaign_contacts_repo = CampaignContactRepository(session)
         contacts_repo = ContactRepository(session)
+        template_repo = TemplateRepository(session)
 
         # Initialize sub-services
         self.lifecycle = CampaignLifecycleManager(
@@ -42,6 +44,7 @@ class CampaignSenderService:
             campaigns_repo,
             campaign_contacts_repo,
             contacts_repo,
+            template_repo,
             message_sender,
             notifier,
             self.trackers,
@@ -63,7 +66,8 @@ class CampaignSenderService:
         try:
             await self.executor.send_message(campaign_id, link_id, contact_id)
         except Exception as e:
-            logger.exception(f"Failed to send campaign message to {contact_id}")
+            logger.exception(
+                f"Failed to send campaign message to {contact_id}")
             await self.executor.handle_send_failure(campaign_id, link_id, str(e))
         finally:
             await self.lifecycle.check_and_complete_if_done(campaign_id)
