@@ -96,6 +96,8 @@ class ChatService:
                 media_files=media_dtos,
                 reply_to_message_id=msg.reply_to_message_id,
                 reaction=msg.reaction,
+                error_code=msg.error_code,
+                error_message=msg.error_message,
             )
 
             response_data.append(msg_dto)

@@ -174,8 +174,9 @@ export interface CampaignContactResponse {
   custom_data: Record<string, any>;
   status: ContactStatus;
   last_sent_at: string | null;
-  error_message: string | null;
   retry_count: number;
+  message_error_code?: number | null;
+  message_error_message?: string | null;
 }
 
 export interface CampaignContactUpdate {
@@ -196,6 +197,8 @@ export interface MessageResponse {
   media_files: MediaFileResponse[];
   reply_to_message_id?: string | null;
   reaction?: string | null;
+  error_code?: number | null;
+  error_message?: string | null;
 }
 
 export interface MediaFileResponse {

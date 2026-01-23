@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from src.core.database import Base
 from src.models.base import (
     CampaignDeliveryStatus,
@@ -50,8 +51,8 @@ class Campaign(Base, UUIDMixin, TimestampMixin):
     failed_count: Mapped[int] = mapped_column(default=0)
     read_count: Mapped[int] = mapped_column(default=0)
     replied_count: Mapped[int] = mapped_column(default=0)
-    template: Mapped["Template | None"] = relationship(
-        back_populates="campaigns")
+    template: Mapped["Template | None"] = relationship(back_populates="campaigns")
+    waba_phone: Mapped["WabaPhoneNumber | None"] = relationship()
     contacts: Mapped[list["CampaignContact"]] = relationship(
         back_populates="campaign", cascade="all, delete-orphan"
     )
@@ -60,10 +61,8 @@ class Campaign(Base, UUIDMixin, TimestampMixin):
 class CampaignContact(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "campaign_contacts"
 
-    campaign_id: Mapped[UUID] = mapped_column(
-        ForeignKey("campaigns.id"), index=True)
-    contact_id: Mapped[UUID] = mapped_column(
-        ForeignKey("contacts.id"), index=True)
+    campaign_id: Mapped[UUID] = mapped_column(ForeignKey("campaigns.id"), index=True)
+    contact_id: Mapped[UUID] = mapped_column(ForeignKey("contacts.id"), index=True)
 
     status: Mapped[CampaignDeliveryStatus] = mapped_column(
         default=CampaignDeliveryStatus.QUEUED, index=True
@@ -72,7 +71,6 @@ class CampaignContact(Base, UUIDMixin, TimestampMixin):
         ForeignKey("messages.id"), nullable=True
     )
 
-    error_message: Mapped[str | None] = mapped_column(String, nullable=True)
     retry_count: Mapped[int] = mapped_column(default=0)
 
     campaign: Mapped["Campaign"] = relationship(back_populates="contacts")

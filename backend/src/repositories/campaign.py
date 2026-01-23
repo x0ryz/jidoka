@@ -125,7 +125,10 @@ class CampaignContactRepository(BaseRepository[CampaignContact]):
         stmt = (
             select(CampaignContact)
             .where(CampaignContact.campaign_id == campaign_id)
-            .options(selectinload(CampaignContact.contact))
+            .options(
+                selectinload(CampaignContact.contact),
+                selectinload(CampaignContact.message)
+            )
             .offset(offset)
             .limit(limit)
         )

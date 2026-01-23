@@ -73,26 +73,67 @@ class CampaignMessageExecutor:
             f"Campaign {campaign_id} variable_mapping: {campaign.variable_mapping} "
             f"(type: {type(campaign.variable_mapping)}, len: {len(campaign.variable_mapping) if campaign.variable_mapping else 0})"
         )
-        if (
-            campaign.message_type == "template"
-            and campaign.variable_mapping
-            and len(campaign.variable_mapping) > 0
-        ):
-            contact_data = {
-                "name": contact.name,
-                "phone_number": contact.phone_number,
-                "custom_data": contact.custom_data or {},
-            }
-            params = render_template_params(
-                campaign.variable_mapping,
-                contact_data,
-            )
-            logger.info(f"Rendered template params: {params}")
-            # Only set template_params if we have actual parameters
-            if params:
-                template_params = params
 
-        logger.info(f"Final template_params being sent: {template_params}")
+        try:
+            if (
+                campaign.message_type == "template"
+                and campaign.variable_mapping
+                and len(campaign.variable_mapping) > 0
+            ):
+                contact_data = {
+                    "name": contact.name,
+                    "phone_number": contact.phone_number,
+                    "custom_data": contact.custom_data or {},
+                }
+                params = render_template_params(
+                    campaign.variable_mapping,
+                    contact_data,
+                )
+                logger.info(f"Rendered template params: {params}")
+                # Only set template_params if we have actual parameters
+                if params:
+                    template_params = params
+
+            logger.info(f"Final template_params being sent: {template_params}")
+        except ValueError as validation_error:
+            # Handle missing contact data - create failed message
+            logger.error(
+                f"Contact {contact_id} validation failed: {validation_error}")
+
+            # Create a failed message to store the error
+            from src.models import Message, MessageDirection, MessageStatus
+            message = Message(
+                waba_phone_id=campaign.waba_phone_id,
+                contact_id=contact.id,
+                direction=MessageDirection.OUTBOUND,
+                status=MessageStatus.FAILED,
+                message_type=campaign.message_type,
+                body=template_name if campaign.message_type == "template" else body_text,
+                template_id=campaign.template_id,
+                error_code=None,
+                error_message=str(validation_error)[:500],
+            )
+            self.session.add(message)
+            await self.session.flush()
+            await self.session.refresh(message)
+
+            # Update campaign contact with the failed message
+            contact_link.message_id = message.id
+            contact_link.status = CampaignDeliveryStatus.FAILED
+            contact_link.retry_count += 1
+            self.session.add(contact_link)
+
+            campaign.failed_count += 1
+            self.session.add(campaign)
+
+            await self.session.commit()
+
+            # Update tracker
+            tracker = self.trackers.get(str(campaign_id))
+            if tracker:
+                tracker.increment_failed()
+
+            return False
 
         try:
             message = await self.sender.send_to_contact(
@@ -142,6 +183,19 @@ class CampaignMessageExecutor:
 
         except Exception as e:
             logger.exception(f"Failed to send message to {contact_id}")
+
+            # Try to get the failed message to link it to campaign_contact
+            if contact.last_message_id:
+                contact_link.message_id = contact.last_message_id
+                contact_link.status = CampaignDeliveryStatus.FAILED
+                contact_link.retry_count += 1
+                self.session.add(contact_link)
+
+                campaign.failed_count += 1
+                self.session.add(campaign)
+
+                await self.session.commit()
+
             raise
 
     async def handle_send_failure(
@@ -156,7 +210,6 @@ class CampaignMessageExecutor:
 
         now = get_utc_now()
         contact_link.status = CampaignDeliveryStatus.FAILED
-        contact_link.error_message = error_msg[:500]
         contact_link.retry_count += 1
         contact_link.updated_at = now
         self.session.add(contact_link)

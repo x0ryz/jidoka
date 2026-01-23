@@ -2,8 +2,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from src.core.database import Base
 from src.models.base import (
     MessageDirection,
@@ -55,6 +56,9 @@ class Message(Base, UUIDMixin, TimestampMixin):
     direction: Mapped[MessageDirection]
     status: Mapped[MessageStatus] = mapped_column(
         default=MessageStatus.PENDING)
+
+    error_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     message_type: Mapped[str] = mapped_column(String, default="text")
     body: Mapped[str | None] = mapped_column(String, nullable=True)

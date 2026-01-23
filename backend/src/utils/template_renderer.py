@@ -39,6 +39,9 @@ def render_template_params(
     Returns:
         List of template parameters in Meta API format
         [{"type": "text", "text": "John"}, {"type": "text", "text": "New York"}]
+
+    Raises:
+        ValueError: If required contact data is missing
     """
     if not variable_mapping:
         return []
@@ -47,18 +50,29 @@ def render_template_params(
     sorted_vars = sorted(variable_mapping.items(), key=lambda x: int(x[0]))
 
     params = []
+    missing_fields = []
+
     for var_index, field_path in sorted_vars:
         # Get value from contact data
         value = get_nested_value(contact_data, field_path)
 
-        # Default to "-" if value not found (Meta API rejects empty strings)
+        # Check if value is missing or empty
         if value is None or value == "":
-            value = "-"
+            missing_fields.append(field_path)
+            continue
 
         params.append({
             "type": "text",
             "text": str(value),
         })
+
+    # Raise error if any required fields are missing
+    if missing_fields:
+        contact_identifier = contact_data.get(
+            "phone_number") or contact_data.get("name") or "Unknown"
+        raise ValueError(
+            f"Contact {contact_identifier} is missing required data: {', '.join(missing_fields)}"
+        )
 
     return params
 
