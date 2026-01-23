@@ -24,7 +24,8 @@ class WhatsAppMessage(BaseModel):
     """Internal schema for sending messages via worker"""
 
     phone_number: str
-    type: Literal["text", "template", "image", "video", "audio", "document", "sticker"]
+    type: Literal["text", "template", "image",
+                  "video", "audio", "document", "sticker"]
     body: str
     reply_to_message_id: UUID | None = None
     phone_id: UUID | None = None
@@ -77,6 +78,8 @@ class MessageResponse(UUIDMixin):
     reply_to_message_id: UUID | None = None
     reaction: str | None = None
     media_files: list[MediaFileResponse] = Field(default_factory=list)
+    error_code: int | None = None
+    error_message: str | None = None
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -93,6 +96,8 @@ class MessageResponse(UUIDMixin):
                 "reaction": "👍",
                 "created_at": "2024-01-15T10:30:00Z",
                 "media_files": [],
+                "error_code": None,
+                "error_message": None,
             }
         },
     )

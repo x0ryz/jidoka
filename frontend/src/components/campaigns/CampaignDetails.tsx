@@ -206,6 +206,7 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
   const [showEditForm, setShowEditForm] = useState(false);
   const [showAddContacts, setShowAddContacts] = useState(false);
   const [editingContact, setEditingContact] = useState<CampaignContactResponse | null>(null);
+  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "contacts">(
     "overview",
   );
@@ -428,9 +429,6 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
                         Спроби
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
-                        Додаткові дані
-                      </th>
                       {canEdit && (
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
                           Дії
@@ -439,58 +437,91 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {contacts.map((contact) => (
-                      <tr key={contact.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {contact.phone_number}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {contact.name || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${getContactStatusColor(contact.status)}`}
+                    {contacts.map((contact) => {
+                      const isExpanded = expandedContactId === contact.id;
+                      const hasCustomData = contact.custom_data && Object.keys(contact.custom_data).length > 0;
+                      const hasError = contact.message_error_message;
+                      const hasExpandableContent = hasCustomData || hasError;
+                      
+                      return (
+                        <React.Fragment key={contact.id}>
+                          <tr 
+                            className={`hover:bg-gray-50 ${hasExpandableContent ? 'cursor-pointer' : ''}`}
+                            onClick={() => hasExpandableContent && setExpandedContactId(isExpanded ? null : contact.id)}
                           >
-                            {contact.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {contact.retry_count}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {contact.custom_data && Object.keys(contact.custom_data).length > 0 ? (
-                            <div className="max-w-xs">
-                              {Object.entries(contact.custom_data).map(([key, value]) => (
-                                <div key={key} className="text-xs">
-                                  <span className="font-medium text-gray-700">{key}:</span>{" "}
-                                  <span className="text-gray-900">{String(value)}</span>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {contact.phone_number}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {contact.name || "-"}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs ${getContactStatusColor(contact.status)}`}
+                              >
+                                {contact.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {contact.retry_count}
+                            </td>
+                            {canEdit && (
+                              <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setEditingContact(contact)}
+                                    className="text-blue-600 hover:text-blue-800 text-xs"
+                                  >
+                                    Редагувати
+                                  </button>
+                                  <button
+                                    onClick={() => onDeleteContact(campaign.id, contact.id)}
+                                    className="text-red-600 hover:text-red-800 text-xs"
+                                  >
+                                    Видалити
+                                  </button>
                                 </div>
-                              ))}
-                            </div>
-                          ) : (
-                            "-"
+                              </td>
+                            )}
+                          </tr>
+                          {isExpanded && hasExpandableContent && (
+                            <tr className="bg-gray-50">
+                              <td colSpan={canEdit ? 5 : 4} className="px-4 py-3">
+                                <div className="bg-white rounded-lg p-4 border border-gray-200">
+                                  {/* Error Message */}
+                                  {hasError && (
+                                    <div className={hasCustomData ? "mb-4" : ""}>
+                                      <h4 className="text-sm font-semibold text-red-700 mb-2">Помилка відправки:</h4>
+                                      <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                        <p className="text-sm text-red-800">{contact.message_error_message}</p>
+                                        {contact.message_error_code && (
+                                          <p className="text-xs text-red-600 mt-1">Код помилки: {contact.message_error_code}</p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Custom Data */}
+                                  {hasCustomData && (
+                                    <div>
+                                      <h4 className="text-sm font-semibold text-gray-700 mb-2">Додаткові дані:</h4>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        {Object.entries(contact.custom_data).map(([key, value]) => (
+                                          <div key={key} className="flex flex-col">
+                                            <span className="text-xs font-medium text-gray-500 uppercase">{key}</span>
+                                            <span className="text-sm text-gray-900 mt-1">{String(value)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        {canEdit && (
-                          <td className="px-4 py-3 text-sm">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => setEditingContact(contact)}
-                                className="text-blue-600 hover:text-blue-800 text-xs"
-                              >
-                                Редагувати
-                              </button>
-                              <button
-                                onClick={() => onDeleteContact(campaign.id, contact.id)}
-                                className="text-red-600 hover:text-red-800 text-xs"
-                              >
-                                Видалити
-                              </button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

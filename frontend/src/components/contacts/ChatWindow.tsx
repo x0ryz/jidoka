@@ -490,6 +490,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             const hasReaction = !!message.reaction;
             const paddingClass = hasReaction ? "pt-2 pb-5 px-3" : "py-2 px-3";
 
+            // Debug logging for failed messages
+            if (message.status === MessageStatus.FAILED) {
+              console.log('Failed message:', {
+                id: message.id,
+                status: message.status,
+                error_code: message.error_code,
+                error_message: message.error_message
+              });
+            }
+
             return (
               <div
                 key={message.id}
@@ -563,7 +573,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </span>
                     {isOutbound && (
                       <span
-                        className={`text-[10px] ${getStatusClass(message.status)}`}
+                        className={`text-[10px] ${getStatusClass(message.status)} cursor-help`}
+                        title={message.status === MessageStatus.FAILED && message.error_message ? `Помилка: ${message.error_message}` : ''}
                       >
                         {getStatusIcon(message.status)}
                       </span>

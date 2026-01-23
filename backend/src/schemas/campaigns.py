@@ -124,8 +124,13 @@ class CampaignContactResponse(BaseModel):
             "contact", "custom_data")
     )
     status: CampaignDeliveryStatus
-    error_message: str | None = None
     retry_count: int
+    message_error_code: int | None = Field(
+        default=None, validation_alias=AliasPath("message", "error_code")
+    )
+    message_error_message: str | None = Field(
+        default=None, validation_alias=AliasPath("message", "error_message")
+    )
 
     model_config = ConfigDict(
         from_attributes=True,
