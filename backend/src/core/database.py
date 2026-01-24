@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+
 from src.core.config import settings
 
 POSTGRES_INDEXES_NAMING_CONVENTION = {
@@ -66,6 +67,7 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=20,
     max_overflow=10,
+    pool_recycle=3600,  # Recycle connections after 1 hour to prevent stale connections
 )
 
 async_session_maker = async_sessionmaker(

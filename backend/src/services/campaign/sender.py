@@ -61,16 +61,21 @@ class CampaignSenderService:
 
     async def send_single_message(
         self, campaign_id: UUID, link_id: UUID, contact_id: UUID
-    ):
-        """Send a single message to a contact as part of a campaign."""
+    ) -> bool:
+        """Send a single message to a contact as part of a campaign.
+        Returns True if sent successfully, False otherwise.
+        """
+        success = False
         try:
-            await self.executor.send_message(campaign_id, link_id, contact_id)
+            success = await self.executor.send_message(campaign_id, link_id, contact_id)
         except Exception as e:
-            logger.exception(
-                f"Failed to send campaign message to {contact_id}")
+            logger.warning(
+                f"Failed to send campaign message to {contact_id}: {e}")
             await self.executor.handle_send_failure(campaign_id, link_id, str(e))
+            success = False
         finally:
             await self.lifecycle.check_and_complete_if_done(campaign_id)
+        return success
 
     async def pause_campaign(self, campaign_id: UUID):
         """Pause a running campaign."""

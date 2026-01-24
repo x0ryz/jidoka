@@ -3,7 +3,13 @@ from uuid import UUID
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Campaign, CampaignStatus, get_utc_now
+from src.core.config import settings
+from src.models import (
+    Campaign,
+    CampaignDeliveryStatus,
+    CampaignStatus,
+    get_utc_now,
+)
 from src.repositories.campaign import CampaignRepository
 from src.services.campaign.tracker import CampaignProgressTracker
 from src.services.notifications.service import NotificationService
@@ -45,7 +51,7 @@ class CampaignLifecycleManager:
         # Notify
         await self.notifier.notify_campaign_status(
             campaign_id=campaign.id,
-            status="RUNNING",
+            status="running",
             name=campaign.name,
             total_contacts=campaign.total_contacts,
             message_type=campaign.message_type,
@@ -63,22 +69,27 @@ class CampaignLifecycleManager:
 
         await self.notifier.notify_campaign_status(
             campaign_id=campaign.id,
-            status="PAUSED",
+            status="paused",
             name=campaign.name,
         )
 
     async def resume_campaign(self, campaign: Campaign):
         """Resume a paused campaign."""
+        logger.info(
+            f"Resuming campaign {campaign.id} from status {campaign.status}")
         campaign.status = CampaignStatus.RUNNING
         campaign.updated_at = get_utc_now()
         self.session.add(campaign)
+        await self.session.flush()  # Ensure changes are written to DB
         await self.session.commit()
+        await self.session.refresh(campaign)
 
-        logger.info(f"Campaign {campaign.id} resumed")
+        logger.info(
+            f"Campaign {campaign.id} resumed with status {campaign.status}")
 
         await self.notifier.notify_campaign_status(
             campaign_id=campaign.id,
-            status="RUNNING",
+            status="running",
             name=campaign.name,
         )
 
@@ -101,7 +112,7 @@ class CampaignLifecycleManager:
         # Notify
         await self.notifier.notify_campaign_status(
             campaign_id=campaign.id,
-            status="COMPLETED",
+            status="completed",
             name=campaign.name,
             total=campaign.total_contacts,
             sent=campaign.sent_count,
@@ -119,26 +130,52 @@ class CampaignLifecycleManager:
         """Check if campaign is completed and update status if so."""
         campaign = await self.campaigns.get_by_id(campaign_id)
 
-        if not campaign or campaign.status != CampaignStatus.RUNNING:
+        if not campaign:
+            logger.debug(f"Campaign {campaign_id} not found")
             return
 
-        # Check if all contacts have been processed (sent or failed)
-        processed = campaign.sent_count + campaign.failed_count
-
-        if processed < campaign.total_contacts:
+        if campaign.status not in [CampaignStatus.RUNNING, CampaignStatus.PAUSED]:
             logger.debug(
-                f"Campaign {campaign_id}: {processed}/{campaign.total_contacts} processed"
-            )
-            return  # Still have contacts to process
+                f"Campaign {campaign_id} is {campaign.status}, not checking completion")
+            return
 
-        # Campaign completed
+        # Determine remaining contacts that still could be processed
+        from sqlalchemy import select
+        from src.models import CampaignContact
+
+        remaining_stmt = select(CampaignContact).where(
+            CampaignContact.campaign_id == campaign_id,
+            (
+                (CampaignContact.status == CampaignDeliveryStatus.QUEUED)
+                | (
+                    (CampaignContact.status == CampaignDeliveryStatus.FAILED)
+                    & (CampaignContact.retry_count < settings.MAX_CAMPAIGN_RETRIES)
+                )
+            ),
+        )
+        remaining_result = await self.session.execute(remaining_stmt)
+        remaining = len(list(remaining_result.scalars().all()))
+
+        if remaining > 0:
+            logger.debug(
+                f"Campaign {campaign_id}: still {remaining} contacts remaining (queued or retryable). "
+                f"Sent: {campaign.sent_count}, Failed exhausted: {campaign.failed_count}"
+            )
+            return
+
+        # No remaining contacts; complete the campaign
+        logger.info(
+            f"Completing campaign {campaign_id}: all contacts processed. Sent: {campaign.sent_count}, "
+            f"Failed exhausted: {campaign.failed_count}"
+        )
         await self.complete_campaign(campaign)
 
     @staticmethod
     def _validate_can_start(campaign: Campaign):
         """Validate that campaign can be started."""
         if campaign.status not in [CampaignStatus.DRAFT, CampaignStatus.SCHEDULED]:
-            raise ValueError(f"Cannot start campaign in {campaign.status} status")
+            raise ValueError(
+                f"Cannot start campaign in {campaign.status} status")
 
         if campaign.total_contacts == 0:
             raise ValueError("Cannot start campaign with no contacts")

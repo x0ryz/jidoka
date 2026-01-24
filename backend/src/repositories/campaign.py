@@ -1,8 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.orm import selectinload
+from src.core.config import settings
 from src.models import (
     Campaign,
     CampaignContact,
@@ -105,11 +106,20 @@ class CampaignContactRepository(BaseRepository[CampaignContact]):
     async def get_sendable_contacts(
         self, campaign_id: UUID, limit: int = 500, offset: int = 0
     ) -> list[CampaignContact]:
+        # Get contacts that are either:
+        # 1. QUEUED (first attempt)
+        # 2. FAILED but haven't exhausted retries
         stmt = (
             select(CampaignContact)
             .where(
                 CampaignContact.campaign_id == campaign_id,
-                CampaignContact.status == CampaignDeliveryStatus.QUEUED,
+                or_(
+                    CampaignContact.status == CampaignDeliveryStatus.QUEUED,
+                    and_(
+                        CampaignContact.status == CampaignDeliveryStatus.FAILED,
+                        CampaignContact.retry_count < settings.MAX_CAMPAIGN_RETRIES,
+                    ),
+                ),
             )
             .options(selectinload(CampaignContact.contact))
             .offset(offset)

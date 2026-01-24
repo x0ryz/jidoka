@@ -57,7 +57,7 @@ class MetaClient:
             f"Meta API send_message status: {resp.status_code} | URL: {url} | Response: {response_body}")
 
         if resp.status_code >= 400:
-            logger.error(f"Meta API Error Response: {response_body}")
+            logger.warning(f"Meta API Error Response: {response_body}")
         resp.raise_for_status()
         return resp.json()
 
@@ -83,7 +83,7 @@ class MetaClient:
         logger.info(
             f"Meta API upload_media status: {resp.status_code} | URL: {url} | Response: {response_body}")
         if resp.status_code >= 400:
-            logger.error(f"Meta API Upload Error: {response_body}")
+            logger.warning(f"Meta API Upload Error: {response_body}")
         resp.raise_for_status()
 
         result = resp.json()

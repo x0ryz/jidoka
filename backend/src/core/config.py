@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     R2_PUBLIC_URL: str | None = None
 
     SENTRY_DSN: str | None = None
+    SENTRY_WORKER_DSN: str | None = None
+
+    # Campaign settings
+    MAX_CAMPAIGN_RETRIES: int = 2  # Maximum retry attempts per contact
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8")

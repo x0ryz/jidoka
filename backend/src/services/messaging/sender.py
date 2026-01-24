@@ -49,6 +49,7 @@ class MessageSenderService:
 
         if message.type == "template":
             from src.repositories.template import TemplateRepository
+
             template_repo = TemplateRepository(self.session)
             template = await template_repo.get_active_by_id(message.body)
             if template:
@@ -68,7 +69,7 @@ class MessageSenderService:
             template_language_code=template_language_code,
             is_campaign=False,
             reply_to_message_id=message.reply_to_message_id,
-            phone_id=str(message.phone_id) if message.phone_id else None
+            phone_id=str(message.phone_id) if message.phone_id else None,
         )
 
         await self.session.commit()
@@ -76,17 +77,28 @@ class MessageSenderService:
     # Supported MIME types by WhatsApp Business API
     SUPPORTED_MIME_TYPES = {
         # Audio
-        "audio/aac", "audio/mp4", "audio/mpeg", "audio/amr", "audio/ogg", "audio/opus",
+        "audio/aac",
+        "audio/mp4",
+        "audio/mpeg",
+        "audio/amr",
+        "audio/ogg",
+        "audio/opus",
         # Documents
-        "application/vnd.ms-powerpoint", "application/msword",
+        "application/vnd.ms-powerpoint",
+        "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/pdf", "text/plain", "application/vnd.ms-excel",
+        "application/pdf",
+        "text/plain",
+        "application/vnd.ms-excel",
         # Images
-        "image/jpeg", "image/png", "image/webp",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
         # Video
-        "video/mp4", "video/3gpp"
+        "video/mp4",
+        "video/3gpp",
     }
 
     async def send_media_message(
@@ -107,15 +119,10 @@ class MessageSenderService:
         if not waba_phone:
             raise ValueError("No eligible WABA Phone found")
 
-        # Step 3: Validate MIME type
-        if mime_type not in self.SUPPORTED_MIME_TYPES:
-            logger.error(
-                f"Unsupported file type: {mime_type}. File: {filename}")
-
-        # Step 4: Determine media type
+        # Step 3: Determine media type
         media_type = self._get_media_type(mime_type)
 
-        # Step 5: Create message entity FIRST (so we can record errors)
+        # Step 4: Create message entity FIRST (so we can record errors)
         message = await self.messages.create(
             waba_phone_id=waba_phone.id,
             contact_id=contact.id,
@@ -128,7 +135,8 @@ class MessageSenderService:
         await self.session.flush()
         await self.session.refresh(message)
 
-        # Step 6: Check MIME type again and fail early if unsupported
+        # Step 5: VALIDATION - Check MIME type
+        # Якщо тип файлу не підтримується - ставимо статус FAILED, пишемо Warning і виходимо.
         if mime_type not in self.SUPPORTED_MIME_TYPES:
             error_message = (
                 f"Unsupported file type '{mime_type}'. "
@@ -138,12 +146,18 @@ class MessageSenderService:
             message.status = MessageStatus.FAILED
             message.error_code = 100
             message.error_message = error_message
+
             self.session.add(message)
             await self.session.commit()
-            raise ValueError(error_message)
+
+            # ВАЖЛИВО: Використовуємо warning замість error і return замість raise
+            logger.warning(
+                f"Media validation failed for {phone_number}. File: {filename}. Reason: {error_message}"
+            )
+            return message
 
         try:
-            # Step 7: Upload to R2 (permanent storage)
+            # Step 6: Upload to R2 (permanent storage)
             ext = mimetypes.guess_extension(mime_type) or ""
             r2_filename = f"{uuid.uuid4()}{ext}"
             r2_key = f"whatsapp/{media_type}s/{r2_filename}"
@@ -151,7 +165,7 @@ class MessageSenderService:
             logger.info(f"Uploading to R2: {r2_key}")
             await self.storage.upload_file(file_bytes, r2_key, mime_type)
 
-            # Step 8: Upload to Meta (get media_id)
+            # Step 7: Upload to Meta (get media_id)
             logger.info(f"Uploading to Meta for phone {phone_number}")
             meta_media_id = await self.meta_client.upload_media(
                 phone_id=waba_phone.phone_number_id,
@@ -162,7 +176,7 @@ class MessageSenderService:
 
             logger.info(f"Meta media_id: {meta_media_id}")
 
-            # Step 9: Save media file metadata
+            # Step 8: Save media file metadata
             await self.messages.add_media_file(
                 message_id=message.id,
                 meta_media_id=meta_media_id,
@@ -174,7 +188,7 @@ class MessageSenderService:
                 bucket_name=settings.R2_BUCKET_NAME,
             )
 
-            # Step 10: Update contact
+            # Step 9: Update contact
             contact.updated_at = message.created_at
             contact.last_message_at = message.created_at
             contact.last_message_id = message.id
@@ -184,7 +198,7 @@ class MessageSenderService:
 
             self.session.add(contact)
 
-            # Step 11: Send via Meta API
+            # Step 10: Send via Meta API
             payload = MetaPayloadBuilder.build_media_message(
                 to_phone=phone_number,
                 media_type=media_type,
@@ -220,20 +234,22 @@ class MessageSenderService:
             if message_with_media and message_with_media.media_files:
                 for mf in message_with_media.media_files:
                     public_url = self.storage.get_public_url(mf.r2_key)
-                    media_files.append({
-                        "id": str(mf.id),
-                        "file_name": mf.file_name,
-                        "mime_type": mf.file_mime_type,
-                        "file_size": mf.file_size,
-                        "url": public_url,
-                        "caption": mf.caption,
-                    })
+                    media_files.append(
+                        {
+                            "id": str(mf.id),
+                            "file_name": mf.file_name,
+                            "mime_type": mf.file_mime_type,
+                            "file_size": mf.file_size,
+                            "url": public_url,
+                            "caption": mf.caption,
+                        }
+                    )
 
             # Notify
             await self.notifier.notify_new_message(
                 message_with_media or message,
                 media_files=media_files,
-                phone=contact.phone_number
+                phone=contact.phone_number,
             )
 
             await self.notifier.notify_message_status(
@@ -246,7 +262,8 @@ class MessageSenderService:
             return message
 
         except Exception as e:
-            logger.error(f"Failed to send media to {phone_number}: {e}")
+            # Цей блок ловить тільки критичні помилки (мережа, API Meta)
+            logger.debug(f"Failed to send media to {phone_number}: {e}")
             message.status = MessageStatus.FAILED
 
             # Parse error code and message from Meta API
@@ -254,26 +271,29 @@ class MessageSenderService:
             error_message = str(e)
 
             # Try to extract error details from HTTP response
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
                     logger.error(f"Meta API error response: {error_data}")
 
-                    if 'error' in error_data:
-                        error_info = error_data['error']
-                        error_code = error_info.get('code')
-                        error_message = error_info.get('message', str(e))
+                    if "error" in error_data:
+                        error_info = error_data["error"]
+                        error_code = error_info.get("code")
+                        error_message = error_info.get("message", str(e))
 
                         # Log additional error details if available
-                        if 'error_subcode' in error_info:
-                            logger.error(
-                                f"Error subcode: {error_info['error_subcode']}")
-                        if 'error_user_title' in error_info:
-                            logger.error(
-                                f"Error title: {error_info['error_user_title']}")
-                        if 'error_user_msg' in error_info:
-                            logger.error(
-                                f"Error user message: {error_info['error_user_msg']}")
+                        if "error_subcode" in error_info:
+                            logger.debug(
+                                f"Error subcode: {error_info['error_subcode']}"
+                            )
+                        if "error_user_title" in error_info:
+                            logger.debug(
+                                f"Error title: {error_info['error_user_title']}"
+                            )
+                        if "error_user_msg" in error_info:
+                            logger.debug(
+                                f"Error user message: {error_info['error_user_msg']}"
+                            )
                 except Exception as parse_error:
                     logger.warning(
                         f"Failed to parse error response: {parse_error}")
@@ -283,6 +303,9 @@ class MessageSenderService:
 
             self.session.add(message)
             await self.session.commit()
+
+            # Для системних помилок ми все ще кидаємо exception,
+            # щоб система могла спробувати повторити (якщо налаштовано retry) або залогувати як баг
             raise
 
     async def send_reaction(
@@ -297,9 +320,7 @@ class MessageSenderService:
             return
 
         if target_message.waba_phone_id:
-            waba_phone = await self.waba_phones.get_by_id(
-                target_message.waba_phone_id
-            )
+            waba_phone = await self.waba_phones.get_by_id(target_message.waba_phone_id)
         else:
             waba_phone = None
 
@@ -456,7 +477,7 @@ class MessageSenderService:
             return message
 
         except Exception as e:
-            logger.error(f"Failed to send to {contact.phone_number}: {e}")
+            logger.warning(f"Failed to send to {contact.phone_number}: {e}")
             message.status = MessageStatus.FAILED
 
             # Parse error code and message from Meta API
@@ -464,26 +485,29 @@ class MessageSenderService:
             error_message = str(e)
 
             # Try to extract error details from HTTP response
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_data = e.response.json()
-                    logger.error(f"Meta API error response: {error_data}")
+                    logger.warning(f"Meta API error response: {error_data}")
 
-                    if 'error' in error_data:
-                        error_info = error_data['error']
-                        error_code = error_info.get('code')
-                        error_message = error_info.get('message', str(e))
+                    if "error" in error_data:
+                        error_info = error_data["error"]
+                        error_code = error_info.get("code")
+                        error_message = error_info.get("message", str(e))
 
                         # Log additional error details if available
-                        if 'error_subcode' in error_info:
-                            logger.error(
-                                f"Error subcode: {error_info['error_subcode']}")
-                        if 'error_user_title' in error_info:
-                            logger.error(
-                                f"Error title: {error_info['error_user_title']}")
-                        if 'error_user_msg' in error_info:
-                            logger.error(
-                                f"Error user message: {error_info['error_user_msg']}")
+                        if "error_subcode" in error_info:
+                            logger.debug(
+                                f"Error subcode: {error_info['error_subcode']}"
+                            )
+                        if "error_user_title" in error_info:
+                            logger.debug(
+                                f"Error title: {error_info['error_user_title']}"
+                            )
+                        if "error_user_msg" in error_info:
+                            logger.debug(
+                                f"Error user message: {error_info['error_user_msg']}"
+                            )
                 except Exception as parse_error:
                     logger.warning(
                         f"Failed to parse error response: {parse_error}")

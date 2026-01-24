@@ -9,6 +9,7 @@ import {
   CampaignContactResponse,
   ContactImport,
   CampaignStatus,
+  ContactStatus,
 } from "../types";
 import CampaignList from "../components/campaigns/CampaignList";
 import CampaignDetails from "../components/campaigns/CampaignDetails";
@@ -45,7 +46,7 @@ const CampaignsPage: React.FC = () => {
   const CONTACTS_PER_PAGE = 50;
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<CampaignTabKey>("drafts");
+  const [activeTab, setActiveTab] = useState<CampaignTabKey>("all");
 
   const statusFilter = useMemo(
     () => CAMPAIGN_TABS.find((tab) => tab.key === activeTab)?.status,
@@ -54,7 +55,7 @@ const CampaignsPage: React.FC = () => {
 
   const sortCampaigns = useCallback((items: CampaignResponse[]) => {
     const getTimestamp = (campaign: CampaignResponse) => {
-      const date = campaign.scheduled_at || campaign.created_at;
+      const date = campaign.updated_at || campaign.created_at;
       return date ? new Date(date).getTime() : 0;
     };
 
@@ -102,7 +103,14 @@ const CampaignsPage: React.FC = () => {
       setCampaigns((prev) => {
         const updated = prev.map((campaign) =>
           campaign.id === data.campaign_id
-            ? { ...campaign, status: data.status }
+            ? { 
+                ...campaign, 
+                status: data.status,
+                // Update counts if provided in the event
+                sent_count: data.sent !== undefined ? data.sent : campaign.sent_count,
+                delivered_count: data.delivered !== undefined ? data.delivered : campaign.delivered_count,
+                failed_count: data.failed !== undefined ? data.failed : campaign.failed_count,
+              }
             : campaign,
         );
 
@@ -110,17 +118,16 @@ const CampaignsPage: React.FC = () => {
           ? updated.filter((campaign) => campaign.status === statusFilter)
           : updated;
 
+         // Update selected campaign from the updated list
+         if (selectedCampaign?.id === data.campaign_id) {
+           const updatedCampaign = updated.find(c => c.id === data.campaign_id);
+           if (updatedCampaign) {
+             setSelectedCampaign(updatedCampaign);
+           }
+         }
+
         return sortCampaigns(filtered);
       });
-
-      // Update selected campaign if it's the one that changed
-      if (selectedCampaign?.id === data.campaign_id) {
-        setSelectedCampaign((prev) =>
-          prev ? { ...prev, status: data.status } : null,
-        );
-        // Reload stats for the selected campaign
-        loadCampaignDetails(data.campaign_id);
-      }
     },
     [selectedCampaign, sortCampaigns, statusFilter],
   );
@@ -154,6 +161,41 @@ const CampaignsPage: React.FC = () => {
     [selectedCampaign],
   );
 
+  // Handle individual message status updates
+  const handleMessageStatusUpdate = useCallback(
+    (data: any) => {
+      console.log("Message status update received:", data);
+
+      // Update campaign stats if this is for the selected campaign
+      if (selectedCampaign?.id === data.campaign_id) {
+        // Reload campaign stats to get accurate counts
+        apiClient.getCampaignStats(data.campaign_id).then((stats) => {
+          setCampaignStats(stats);
+        });
+
+        // Update contact in the list if present
+        if (data.contact_id) {
+          setCampaignContacts((prev) =>
+            prev.map((contact) =>
+              contact.contact_id === data.contact_id
+                ? {
+                  ...contact,
+                  status: data.status === "sent" || data.status === "delivered" 
+                    ? ContactStatus.SENT 
+                    : data.status === "failed" 
+                      ? ContactStatus.FAILED 
+                      : contact.status,
+                  retry_count: data.retry_count !== undefined ? data.retry_count : contact.retry_count,
+                }
+                : contact,
+            ),
+          );
+        }
+      }
+    },
+    [selectedCampaign],
+  );
+
   // Subscribe to WebSocket events
   useWSEvent(EventType.CAMPAIGN_STARTED, handleCampaignUpdate);
   useWSEvent(EventType.CAMPAIGN_PAUSED, handleCampaignUpdate);
@@ -161,6 +203,9 @@ const CampaignsPage: React.FC = () => {
   useWSEvent(EventType.CAMPAIGN_COMPLETED, handleCampaignUpdate);
   useWSEvent(EventType.CAMPAIGN_FAILED, handleCampaignUpdate);
   useWSEvent(EventType.CAMPAIGN_PROGRESS, handleCampaignProgress);
+  useWSEvent(EventType.MESSAGE_SENT, handleMessageStatusUpdate);
+  useWSEvent(EventType.MESSAGE_DELIVERED, handleMessageStatusUpdate);
+  useWSEvent(EventType.MESSAGE_FAILED, handleMessageStatusUpdate);
 
   const loadCampaignDetails = async (campaignId: string) => {
     try {

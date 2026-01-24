@@ -3,6 +3,7 @@ from uuid import UUID
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.models import (
     Campaign,
     CampaignDeliveryStatus,
@@ -123,7 +124,9 @@ class CampaignMessageExecutor:
             contact_link.retry_count += 1
             self.session.add(contact_link)
 
-            campaign.failed_count += 1
+            # Increment failed_count only on first failure (retry_count was 0)
+            if contact_link.retry_count == 1:
+                campaign.failed_count += 1
             self.session.add(campaign)
 
             await self.session.commit()
@@ -182,7 +185,10 @@ class CampaignMessageExecutor:
             return True
 
         except Exception as e:
-            logger.exception(f"Failed to send message to {contact_id}")
+            logger.warning(f"Failed to send message to {contact_id}")
+
+            # Rollback any uncommitted changes from the failed send
+            await self.session.rollback()
 
             # Try to get the failed message to link it to campaign_contact
             if contact.last_message_id:
@@ -191,10 +197,17 @@ class CampaignMessageExecutor:
                 contact_link.retry_count += 1
                 self.session.add(contact_link)
 
-                campaign.failed_count += 1
+                # Increment failed_count only on first failure (retry_count was 0)
+                if contact_link.retry_count == 1:
+                    campaign.failed_count += 1
                 self.session.add(campaign)
 
-                await self.session.commit()
+                try:
+                    await self.session.commit()
+                except Exception as commit_error:
+                    logger.error(
+                        f"Failed to commit failure state: {commit_error}")
+                    await self.session.rollback()
 
             raise
 
@@ -214,7 +227,9 @@ class CampaignMessageExecutor:
         contact_link.updated_at = now
         self.session.add(contact_link)
 
-        campaign.failed_count += 1
+        # Increment failed_count only on first failure (retry_count was 0)
+        if contact_link.retry_count == 1:
+            campaign.failed_count += 1
         campaign.updated_at = now
         self.session.add(campaign)
 
@@ -239,22 +254,44 @@ class CampaignMessageExecutor:
 
     # ==================== Private Methods ====================
 
-    @staticmethod
-    def _can_send_message(campaign: Campaign, contact_link) -> bool:
+    def _can_send_message(self, campaign: Campaign, contact_link) -> bool:
         """Check if message can be sent to contact."""
         if campaign.status != CampaignStatus.RUNNING:
-            logger.debug(f"Campaign {campaign.id} not running")
-            return False
-
-        # Skip if contact already processed
-        if contact_link.status != CampaignDeliveryStatus.QUEUED:
             logger.debug(
-                f"Contact link {contact_link.id} already processed "
-                f"with status {contact_link.status}"
+                f"Campaign {campaign.id} not running: status={campaign.status}, "
+                f"updated_at={campaign.updated_at}"
             )
             return False
 
-        return True
+        # Allow sending if:
+        # 1. Contact is QUEUED (first attempt)
+        # 2. Contact FAILED but hasn't exhausted retries
+        if contact_link.status == CampaignDeliveryStatus.QUEUED:
+            return True
+
+        if contact_link.status == CampaignDeliveryStatus.FAILED:
+            # Check if we can retry
+            if contact_link.retry_count < settings.MAX_CAMPAIGN_RETRIES:
+                logger.debug(
+                    f"Contact link {contact_link.id} will be retried "
+                    f"({contact_link.retry_count}/{settings.MAX_CAMPAIGN_RETRIES})"
+                )
+                # Reset status to QUEUED to allow retry
+                contact_link.status = CampaignDeliveryStatus.QUEUED
+                self.session.add(contact_link)
+                return True
+            else:
+                logger.debug(
+                    f"Contact link {contact_link.id} exhausted retries "
+                    f"({contact_link.retry_count}/{settings.MAX_CAMPAIGN_RETRIES})"
+                )
+                return False
+
+        logger.debug(
+            f"Contact link {contact_link.id} already processed "
+            f"with status {contact_link.status}"
+        )
+        return False
 
     @staticmethod
     def _prepare_message_data(campaign: Campaign) -> tuple[str | None, str, str | None]:
