@@ -1,9 +1,11 @@
 import asyncio
 
 import httpx
+import sentry_sdk
 from faststream import ContextRepo, FastStream
 
 from src.core.broker import broker, setup_jetstream
+from src.core.config import settings
 from src.worker.dependencies import logger
 from src.worker.routers.campaigns import router as campaigns_router
 from src.worker.routers.media import router as media_router
@@ -19,6 +21,12 @@ broker.include_router(media_router)
 broker.include_router(system_router)
 
 scheduler_task: asyncio.Task | None = None
+
+if settings.SENTRY_WORKER_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_WORKER_DSN,
+        send_default_pii=True,
+    )
 
 
 @app.on_startup

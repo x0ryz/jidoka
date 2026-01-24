@@ -92,17 +92,20 @@ class CampaignStatusEvent(WSEvent):
     """Campaign status change"""
 
     def __init__(self, campaign_id: UUID, status: str, **extra):
+        # Normalize status to lowercase to match backend payloads
+        normalized_status = (status or "").lower()
         event_map = {
-            "SCHEDULED": EventType.CAMPAIGN_SCHEDULED,
-            "RUNNING": EventType.CAMPAIGN_STARTED,
-            "PAUSED": EventType.CAMPAIGN_PAUSED,
-            "COMPLETED": EventType.CAMPAIGN_COMPLETED,
-            "FAILED": EventType.CAMPAIGN_FAILED,
+            "scheduled": EventType.CAMPAIGN_SCHEDULED,
+            "running": EventType.CAMPAIGN_STARTED,
+            "paused": EventType.CAMPAIGN_PAUSED,
+            "completed": EventType.CAMPAIGN_COMPLETED,
+            "failed": EventType.CAMPAIGN_FAILED,
         }
 
         super().__init__(
-            event=event_map.get(status, EventType.CAMPAIGN_UPDATED),
-            data={"campaign_id": str(campaign_id), "status": status, **extra},
+            event=event_map.get(normalized_status, EventType.CAMPAIGN_UPDATED),
+            data={"campaign_id": str(campaign_id),
+                  "status": normalized_status, **extra},
         )
 
 

@@ -7,6 +7,7 @@ import {
   ContactUpdate,
   ContactImport,
   ContactImportResult,
+  DuplicateCheckResult,
   CampaignResponse,
   CampaignCreate,
   CampaignUpdate,
