@@ -106,20 +106,14 @@ class CampaignContactRepository(BaseRepository[CampaignContact]):
     async def get_sendable_contacts(
         self, campaign_id: UUID, limit: int = 500, offset: int = 0
     ) -> list[CampaignContact]:
-        # Get contacts that are either:
-        # 1. QUEUED (first attempt)
-        # 2. FAILED but haven't exhausted retries
+        # Get contacts that are QUEUED (not yet attempted)
+        # Note: We don't include FAILED contacts for retry because we don't
+        # have a mechanism to republish them to the NATS queue
         stmt = (
             select(CampaignContact)
             .where(
                 CampaignContact.campaign_id == campaign_id,
-                or_(
-                    CampaignContact.status == CampaignDeliveryStatus.QUEUED,
-                    and_(
-                        CampaignContact.status == CampaignDeliveryStatus.FAILED,
-                        CampaignContact.retry_count < settings.MAX_CAMPAIGN_RETRIES,
-                    ),
-                ),
+                CampaignContact.status == CampaignDeliveryStatus.QUEUED,
             )
             .options(selectinload(CampaignContact.contact))
             .offset(offset)
@@ -128,6 +122,7 @@ class CampaignContactRepository(BaseRepository[CampaignContact]):
 
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
 
     async def get_campaign_contacts(
         self, campaign_id: UUID, limit: int = 100, offset: int = 0

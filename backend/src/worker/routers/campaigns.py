@@ -88,14 +88,24 @@ async def consume_campaign_messages(
                     try:
                         campaigns_repo = CampaignRepository(session)
                         campaign = await campaigns_repo.get_by_id(UUID(cid))
-                        if not campaign or campaign.status != CampaignStatus.RUNNING:
-                            # Stop consuming on pause; let resume recreate the task
-                            logger.debug(
-                                f"Halting consumer; campaign status={campaign.status if campaign else 'unknown'}"
-                            )
-                            # Ack to avoid redelivery storm; retries handled at DB-level
+                        if not campaign:
+                            logger.debug(f"Campaign {cid} not found")
+                            await msg.ack()
+                            continue
+                        
+                        # Only stop consumer for PAUSED campaigns
+                        # For COMPLETED, we continue to ack remaining messages
+                        if campaign.status == CampaignStatus.PAUSED:
+                            logger.debug(f"Halting consumer; campaign is paused")
                             await msg.ack()
                             raise asyncio.CancelledError()
+                        
+                        # For non-RUNNING (e.g., COMPLETED), just ack and skip
+                        if campaign.status != CampaignStatus.RUNNING:
+                            logger.debug(
+                                f"Skipping message; campaign status={campaign.status}")
+                            await msg.ack()
+                            continue
                     finally:
                         # Ensure session is explicitly closed
                         await session.close()

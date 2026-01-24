@@ -444,10 +444,10 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                       const hasCustomData = contact.custom_data && Object.keys(contact.custom_data).length > 0;
                       const hasError = contact.message_error_message;
                       const hasExpandableContent = hasCustomData || hasError;
-                      
+
                       return (
                         <React.Fragment key={contact.id}>
-                          <tr 
+                          <tr
                             className={`hover:bg-gray-50 ${hasExpandableContent ? 'cursor-pointer' : ''}`}
                             onClick={() => hasExpandableContent && setExpandedContactId(isExpanded ? null : contact.id)}
                           >
@@ -458,11 +458,21 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                               {contact.name || "-"}
                             </td>
                             <td className="px-4 py-3 text-sm">
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs ${getContactStatusColor(contact.status)}`}
-                              >
-                                {contact.status}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs ${getContactStatusColor(contact.status)}`}
+                                >
+                                  {contact.status}
+                                </span>
+                                {hasError && (
+                                  <span
+                                    className="text-red-500 text-xs cursor-help"
+                                    title="Натисніть, щоб побачити деталі помилки"
+                                  >
+                                    ⚠️
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-600">
                               {contact.retry_count}
@@ -502,7 +512,7 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                                       </div>
                                     </div>
                                   )}
-                                  
+
                                   {/* Custom Data */}
                                   {hasCustomData && (
                                     <div>
@@ -745,9 +755,9 @@ const ContactEditForm: React.FC<{
 
     try {
       const parsedData = JSON.parse(customDataJson);
-      await onSubmit({ 
-        name: name.trim() || null, 
-        custom_data: parsedData 
+      await onSubmit({
+        name: name.trim() || null,
+        custom_data: parsedData
       });
     } catch (err) {
       setError("Невірний JSON формат");

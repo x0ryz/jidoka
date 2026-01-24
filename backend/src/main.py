@@ -11,6 +11,7 @@ from src.routes import (
     contacts,
     dashboard,
     messages,
+    replies,
     tags,
     templates,
     waba,
@@ -47,5 +48,6 @@ app.include_router(messages.router)
 app.include_router(waba.router)
 app.include_router(campaigns.router)
 app.include_router(templates.router)
+app.include_router(replies.router)
 app.include_router(dashboard.router)
 app.include_router(tags.router)

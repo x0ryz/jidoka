@@ -140,26 +140,42 @@ class CampaignLifecycleManager:
             return
 
         # Determine remaining contacts that still could be processed
+        # Note: We only count QUEUED contacts as remaining, not FAILED ones that
+        # haven't been retried yet, because we don't have a retry mechanism
+        # (failed contacts aren't republished to NATS queue)
         from sqlalchemy import select
         from src.models import CampaignContact
 
         remaining_stmt = select(CampaignContact).where(
             CampaignContact.campaign_id == campaign_id,
             (
+                # Only queued contacts (not yet attempted)
                 (CampaignContact.status == CampaignDeliveryStatus.QUEUED)
+                # OR failed contacts that haven't been attempted yet (shouldn't happen but just in case)
                 | (
                     (CampaignContact.status == CampaignDeliveryStatus.FAILED)
-                    & (CampaignContact.retry_count < settings.MAX_CAMPAIGN_RETRIES)
+                    & (CampaignContact.retry_count == 0)
                 )
             ),
         )
         remaining_result = await self.session.execute(remaining_stmt)
         remaining = len(list(remaining_result.scalars().all()))
 
+        logger.info(
+            f"Campaign {campaign_id} completion check: "
+            f"remaining={remaining}, "
+            f"total={campaign.total_contacts}, "
+            f"sent={campaign.sent_count}, "
+            f"delivered={campaign.delivered_count}, "
+            f"failed={campaign.failed_count}, "
+            f"read={campaign.read_count}, "
+            f"replied={campaign.replied_count}"
+        )
+
         if remaining > 0:
             logger.debug(
                 f"Campaign {campaign_id}: still {remaining} contacts remaining (queued or retryable). "
-                f"Sent: {campaign.sent_count}, Failed exhausted: {campaign.failed_count}"
+                f"Not completing yet."
             )
             return
 

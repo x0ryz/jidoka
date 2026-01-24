@@ -135,6 +135,19 @@ class CampaignMessageExecutor:
             tracker = self.trackers.get(str(campaign_id))
             if tracker:
                 tracker.increment_failed()
+            
+            # Notify about validation failure via WebSocket
+            await self.notifier.notify_message_status(
+                message_id=message.id,
+                wamid="",
+                status="failed",
+                campaign_id=str(campaign_id),
+                contact_id=str(contact_id),
+                phone=contact.phone_number,
+                contact_name=contact.name,
+                error=str(validation_error)[:500],
+                retry_count=contact_link.retry_count,
+            )
 
             return False
 
@@ -153,6 +166,49 @@ class CampaignMessageExecutor:
                 else None,
             )
 
+            # Check if the message actually failed (for campaign messages, 
+            # send_to_contact returns failed message instead of raising)
+            from src.models import MessageStatus
+            if message.status == MessageStatus.FAILED:
+                logger.warning(
+                    f"Message {message.id} for contact {contact_id} failed: {message.error_message}"
+                )
+                
+                # Update campaign contact status to FAILED
+                contact_link.message_id = message.id
+                contact_link.status = CampaignDeliveryStatus.FAILED
+                contact_link.retry_count += 1
+                self.session.add(contact_link)
+
+                # Increment failed_count only on first failure
+                if contact_link.retry_count == 1:
+                    campaign.failed_count += 1
+                self.session.add(campaign)
+
+                await self.session.commit()
+                
+                # Update tracker
+                tracker = self.trackers.get(str(campaign_id))
+                if tracker:
+                    tracker.increment_failed()
+                
+                # Notify about failed message via WebSocket
+                await self.notifier.notify_message_status(
+                    message_id=message.id,
+                    wamid=message.wamid or "",
+                    status="failed",
+                    campaign_id=str(campaign_id),
+                    contact_id=str(contact_id),
+                    phone=contact.phone_number,
+                    contact_name=contact.name,
+                    error=message.error_message,
+                    error_code=message.error_code,
+                    retry_count=contact_link.retry_count,
+                )
+                
+                return False
+
+            # Message sent successfully
             now = get_utc_now()
             self._update_after_send(
                 contact_link, contact, campaign, message.id, now)
@@ -185,14 +241,50 @@ class CampaignMessageExecutor:
             return True
 
         except Exception as e:
-            logger.warning(f"Failed to send message to {contact_id}")
+            logger.warning(f"Failed to send message to {contact_id}: {e}")
 
             # Rollback any uncommitted changes from the failed send
             await self.session.rollback()
 
-            # Try to get the failed message to link it to campaign_contact
+            # Check if we got a failed message from send_to_contact
+            # (it returns failed message for campaigns instead of raising)
+            # If so, we need to refetch it in a new transaction
+            from src.models import Message, MessageDirection, MessageStatus
+            from src.repositories.message import MessageRepository
+            
+            msg_repo = MessageRepository(self.session)
+            failed_message = None
+            
+            # Try to get the last message for this contact that's in FAILED state
             if contact.last_message_id:
-                contact_link.message_id = contact.last_message_id
+                last_msg = await msg_repo.get_by_id(contact.last_message_id)
+                if last_msg and last_msg.status == MessageStatus.FAILED:
+                    failed_message = last_msg
+                    logger.info(f"Found existing failed message {failed_message.id} for contact {contact_id}")
+            
+            # If we didn't find an existing failed message, create one
+            if not failed_message:
+                logger.info(f"Creating new failed message for contact {contact_id}")
+                failed_message = Message(
+                    waba_phone_id=campaign.waba_phone_id,
+                    contact_id=contact.id,
+                    direction=MessageDirection.OUTBOUND,
+                    status=MessageStatus.FAILED,
+                    message_type=campaign.message_type,
+                    body=template_name if campaign.message_type == "template" else body_text,
+                    template_id=campaign.template_id,
+                    error_code=None,
+                    error_message=str(e)[:500],
+                )
+                self.session.add(failed_message)
+            
+            try:
+                if not failed_message.id:
+                    await self.session.flush()
+                    await self.session.refresh(failed_message)
+
+                # Link the failed message to campaign contact
+                contact_link.message_id = failed_message.id
                 contact_link.status = CampaignDeliveryStatus.FAILED
                 contact_link.retry_count += 1
                 self.session.add(contact_link)
@@ -202,14 +294,22 @@ class CampaignMessageExecutor:
                     campaign.failed_count += 1
                 self.session.add(campaign)
 
-                try:
-                    await self.session.commit()
-                except Exception as commit_error:
-                    logger.error(
-                        f"Failed to commit failure state: {commit_error}")
-                    await self.session.rollback()
+                await self.session.commit()
+                
+                # Update tracker
+                tracker = self.trackers.get(str(campaign_id))
+                if tracker:
+                    tracker.increment_failed()
 
-            raise
+                logger.info(
+                    f"Recorded failed message {failed_message.id} for contact {contact_id}"
+                )
+            except Exception as commit_error:
+                logger.error(
+                    f"Failed to commit failure state: {commit_error}")
+                await self.session.rollback()
+
+            return False
 
     async def handle_send_failure(
         self, campaign_id: UUID, link_id: UUID, error_msg: str
@@ -263,29 +363,10 @@ class CampaignMessageExecutor:
             )
             return False
 
-        # Allow sending if:
-        # 1. Contact is QUEUED (first attempt)
-        # 2. Contact FAILED but hasn't exhausted retries
+        # Only allow sending to QUEUED contacts (first attempt)
+        # Note: Retry logic removed since failed contacts aren't republished to queue
         if contact_link.status == CampaignDeliveryStatus.QUEUED:
             return True
-
-        if contact_link.status == CampaignDeliveryStatus.FAILED:
-            # Check if we can retry
-            if contact_link.retry_count < settings.MAX_CAMPAIGN_RETRIES:
-                logger.debug(
-                    f"Contact link {contact_link.id} will be retried "
-                    f"({contact_link.retry_count}/{settings.MAX_CAMPAIGN_RETRIES})"
-                )
-                # Reset status to QUEUED to allow retry
-                contact_link.status = CampaignDeliveryStatus.QUEUED
-                self.session.add(contact_link)
-                return True
-            else:
-                logger.debug(
-                    f"Contact link {contact_link.id} exhausted retries "
-                    f"({contact_link.retry_count}/{settings.MAX_CAMPAIGN_RETRIES})"
-                )
-                return False
 
         logger.debug(
             f"Contact link {contact_link.id} already processed "

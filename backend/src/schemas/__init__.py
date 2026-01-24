@@ -37,6 +37,15 @@ from .messages import (
     WhatsAppMessage,
 )
 
+# Quick Replies
+from .replies import (
+    QuickReplyCreate,
+    QuickReplyListResponse,
+    QuickReplyResponse,
+    QuickReplyTextResponse,
+    QuickReplyUpdate,
+)
+
 # Templates
 from .templates import TemplateListResponse, TemplateResponse, TemplateUpdate
 
@@ -98,6 +107,12 @@ __all__ = [
     # Templates
     "TemplateResponse",
     "TemplateListResponse",
+    # Quick Replies
+    "QuickReplyCreate",
+    "QuickReplyUpdate",
+    "QuickReplyResponse",
+    "QuickReplyListResponse",
+    "QuickReplyTextResponse",
     # WABA
     "WabaAccountRequest",
     "WabaAccountResponse",

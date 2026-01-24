@@ -190,13 +190,24 @@ class CampaignTrackerService:
         if campaign_link.status == CampaignDeliveryStatus.FAILED:
             return
 
-        # Декрементуємо попередній статус
+        # Only decrement previous status and increment failed if transitioning from a different status
+        # (not from QUEUED, as executor already handled the failure count)
+        should_increment_failed = False
+        
         if campaign_link.status == CampaignDeliveryStatus.READ:
             campaign.read_count = max(0, campaign.read_count - 1)
+            should_increment_failed = True
         elif campaign_link.status == CampaignDeliveryStatus.DELIVERED:
             campaign.delivered_count = max(0, campaign.delivered_count - 1)
+            should_increment_failed = True
         elif campaign_link.status == CampaignDeliveryStatus.SENT:
             campaign.sent_count = max(0, campaign.sent_count - 1)
+            should_increment_failed = True
+        # If status was QUEUED, executor already handled failed_count increment
 
         campaign_link.status = CampaignDeliveryStatus.FAILED
-        campaign.failed_count += 1
+        
+        # Only increment if we're transitioning from a "success" status
+        if should_increment_failed:
+            campaign.failed_count += 1
+

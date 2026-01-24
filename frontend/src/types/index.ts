@@ -397,3 +397,27 @@ export interface AvailableFieldsResponse {
   custom_fields: string[];
   total_contacts: number;
 }
+
+// Quick Reply Types
+export interface QuickReply {
+  id: string;
+  title: string;
+  content: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuickReplyCreate {
+  title: string;
+  content: Record<string, string>;
+}
+
+export interface QuickReplyUpdate {
+  title?: string;
+  content?: Record<string, string>;
+}
+
+export interface QuickReplyTextResponse {
+  text: string;
+  language: string;
+}

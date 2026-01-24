@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, FileText, SendToBack, Settings } from "lucide-react";
+import { LayoutDashboard, Users, FileText, SendToBack, Settings, Zap } from "lucide-react";
 
 const Navigation: React.FC = () => {
   const location = useLocation();
@@ -54,6 +54,15 @@ const Navigation: React.FC = () => {
             >
               <SendToBack className="w-4 h-4" />
               Розсилки
+            </Link>
+            <Link
+              to="/quick-replies"
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${isActive(
+                "/quick-replies",
+              )}`}
+            >
+              <Zap className="w-4 h-4" />
+              Швидкі відповіді
             </Link>
             <Link
               to="/settings"

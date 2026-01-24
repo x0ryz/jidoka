@@ -516,6 +516,14 @@ class MessageSenderService:
             message.error_message = error_message[:500] if error_message else None
 
             self.session.add(message)
+            
+            # For campaign messages, return the failed message instead of raising
+            # This allows the campaign executor to handle the failure gracefully
+            if is_campaign:
+                logger.info(f"Returning failed campaign message for {contact.phone_number}")
+                return message
+            
+            # For non-campaign messages, raise to maintain backward compatibility
             raise
 
     def _get_media_type(self, mime_type: str) -> str:
