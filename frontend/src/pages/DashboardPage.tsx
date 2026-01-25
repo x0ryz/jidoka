@@ -29,7 +29,6 @@ const DashboardPage: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Функція для завантаження всіх даних
   const fetchDashboardData = async () => {
     try {
       if (!wabaStatus) setLoading(true);
@@ -55,11 +54,11 @@ const DashboardPage: React.FC = () => {
     fetchDashboardData();
   }, []);
 
-  // Обробник синхронізації WABA
   const handleSync = async () => {
     try {
       setSyncing(true);
       await apiClient.triggerWabaSync();
+      // Wait a bit for backend to process, then refresh
       setTimeout(async () => {
         await apiClient.getWabaStatus().then(setWabaStatus);
         setSyncing(false);
@@ -71,28 +70,20 @@ const DashboardPage: React.FC = () => {
   };
 
   const getStatusColor = (status: string | null) => {
-    if (!status) return "bg-gray-100 text-gray-800";
+    if (!status) return "bg-gray-100 text-gray-600";
     const lower = status.toLowerCase();
-    if (
-      lower.includes("connected") ||
-      lower.includes("verified") ||
-      lower.includes("approved")
-    ) {
-      return "bg-green-100 text-green-800";
-    }
-    if (lower.includes("pending")) return "bg-yellow-100 text-yellow-800";
-    if (lower.includes("rejected") || lower.includes("failed")) {
-      return "bg-red-100 text-red-800";
-    }
-    return "bg-gray-100 text-gray-800";
+    if (lower.includes("connected") || lower.includes("verified") || lower.includes("approved")) return "bg-green-100 text-green-700 border-green-200";
+    if (lower.includes("pending")) return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    if (lower.includes("rejected") || lower.includes("failed")) return "bg-red-100 text-red-700 border-red-200";
+    return "bg-gray-100 text-gray-600 border-gray-200";
   };
 
   const getQualityColor = (rating: string) => {
     const lower = rating.toLowerCase();
-    if (lower === "green") return "bg-green-100 text-green-800";
-    if (lower === "yellow") return "bg-yellow-100 text-yellow-800";
-    if (lower === "red") return "bg-red-100 text-red-800";
-    return "bg-gray-100 text-gray-800";
+    if (lower === "green") return "text-green-600 bg-green-50 border-green-100";
+    if (lower === "yellow") return "text-yellow-600 bg-yellow-50 border-yellow-100";
+    if (lower === "red") return "text-red-600 bg-red-50 border-red-100";
+    return "text-gray-600 bg-gray-50 border-gray-100";
   };
 
   if (loading) {
@@ -104,218 +95,202 @@ const DashboardPage: React.FC = () => {
   }
 
   if (error || !stats) {
-    return <div className="text-red-500 p-4">{error}</div>;
+    return <div className="text-red-500 p-4 bg-red-50 rounded-lg border border-red-100 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500"></div>{error}</div>;
   }
 
   const mainAccount = wabaStatus?.accounts[0];
 
   return (
     <div className="space-y-6">
-      {/* Stats Grid */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <div className="text-sm text-gray-500">Overview of your business messaging</div>
+      </div>
+
+      {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Contacts Card */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        {/* Contacts */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 relative overflow-hidden">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-gray-500 text-sm font-medium">Contacts</h3>
-            <Users className="h-5 w-5 text-indigo-500" />
-          </div>
-          <div className="text-3xl font-bold text-gray-900">
-            {stats.contacts.total}
-          </div>
-          <div className="mt-2 text-sm text-gray-600">
-            <span className="text-orange-500 font-medium">
-              {stats.contacts.unread}
-            </span>{" "}
-            unread chats
-          </div>
-        </div>
-
-        {/* Messages Card */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">
-              Messages (24h)
-            </h3>
-            <MessageSquare className="h-5 w-5 text-green-500" />
-          </div>
-          <div className="text-3xl font-bold text-gray-900">
-            {stats.messages.last_24h}
-          </div>
-          <div className="mt-2 text-sm text-gray-600 flex justify-between">
-            <span>Deliv. Rate: {stats.messages.delivery_rate}%</span>
-            <span>Total: {stats.messages.total}</span>
-          </div>
-        </div>
-
-        {/* WABA Account Card */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">WABA Account</h3>
-            {/* Кнопка синхронізації замість іконки Shield */}
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              title="Оновити статус WABA"
-              className={`p-1.5 rounded-md transition-all duration-200 ${syncing
-                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : "text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 active:scale-95"
-                }`}
-            >
-              <RefreshCw
-                className={`w-5 h-5 ${syncing ? "animate-spin" : ""}`}
-              />
-            </button>
-          </div>
-
-          {mainAccount ? (
-            <>
-              <div
-                className="text-lg font-bold text-gray-900 truncate"
-                title={mainAccount.name}
-              >
-                {mainAccount.name}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(mainAccount.account_review_status)}`}
-                >
-                  {mainAccount.account_review_status || "Review: N/A"}
-                </span>
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(mainAccount.business_verification_status)}`}
-                >
-                  {mainAccount.business_verification_status || "Verify: N/A"}
-                </span>
-              </div>
-            </>
-          ) : (
-            <div className="text-sm text-gray-500 py-2">
-              No account connected
+            <div className="p-2 bg-indigo-50 rounded-lg">
+              <Users className="h-5 w-5 text-indigo-600" />
             </div>
-          )}
+          </div>
+          <div className="flex items-baseline gap-2">
+            <div className="text-3xl font-bold text-gray-900">{stats.contacts.total.toLocaleString()}</div>
+            {stats.contacts.unread > 0 && (
+              <span className="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
+                {stats.contacts.unread} unread
+              </span>
+            )}
+          </div>
+          <div className="mt-4 text-xs text-gray-400">Total reach</div>
+        </div>
+
+        {/* Messages */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-gray-500 text-sm font-medium">Messages (24h)</h3>
+            <div className="p-2 bg-green-50 rounded-lg">
+              <MessageSquare className="h-5 w-5 text-green-600" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <div className="text-3xl font-bold text-gray-900">{stats.messages.last_24h.toLocaleString()}</div>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${stats.messages.delivery_rate > 90 ? 'text-green-600 bg-green-50 border-green-100' :
+                stats.messages.delivery_rate > 70 ? 'text-yellow-600 bg-yellow-50 border-yellow-100' :
+                  'text-red-600 bg-red-50 border-red-100'
+              }`}>
+              {stats.messages.delivery_rate}% deliv.
+            </span>
+          </div>
+          <div className="mt-4 text-xs text-gray-400">
+            <span className="font-medium text-gray-600">{stats.messages.sent}</span> sent / <span className="font-medium text-gray-600">{stats.messages.received}</span> received
+          </div>
+        </div>
+
+        {/* Campaigns */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-gray-500 text-sm font-medium">Active Campaigns</h3>
+            <div className="p-2 bg-purple-50 rounded-lg">
+              <TrendingUp className="h-5 w-5 text-purple-600" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <div className="text-3xl font-bold text-gray-900">{stats.campaigns.active}</div>
+            {stats.campaigns.active > 0 && (
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+              </span>
+            )}
+          </div>
+          <div className="mt-4 text-xs text-gray-400">
+            {stats.campaigns.completed} completed historically
+          </div>
         </div>
       </div>
 
-      {/* Main Content Grid */}
+      {/* Main Content Split */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart Section */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <TrendingUp className="h-5 w-5 mr-2 text-gray-500" />
-            Message Traffic (Last 7 Days)
-          </h2>
-          <div className="h-80 w-full">
-            {timeline && (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={timeline}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(val) =>
-                      new Date(val).toLocaleDateString(undefined, {
-                        weekday: "short",
-                      })
-                    }
-                  />
-                  <YAxis />
-                  <Tooltip
-                    labelFormatter={(val) => new Date(val).toLocaleDateString()}
-                  />
-                  <Legend />
-                  <Bar
-                    dataKey="sent"
-                    name="Sent"
-                    fill="#4f46e5"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="received"
-                    name="Received"
-                    fill="#10b981"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
 
-        {/* Right Column */}
-        <div className="space-y-6">
-          {/* Phone Numbers Section */}
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 flex flex-col h-full">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center justify-between">
-              <div className="flex items-center">
-                <Smartphone className="h-5 w-5 mr-2 text-gray-500" />
-                Phone Numbers
-              </div>
-              {wabaStatus?.phone_numbers && (
-                <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
-                  {wabaStatus.phone_numbers.length}
-                </span>
-              )}
-            </h2>
-
-            <div className="flex-1 overflow-y-auto pr-1 space-y-4 custom-scrollbar">
-              {wabaStatus?.phone_numbers &&
-                wabaStatus.phone_numbers.length > 0 ? (
-                <ul className="space-y-3">
-                  {wabaStatus.phone_numbers.map((phone) => (
-                    <li
-                      key={phone.id}
-                      className="p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-indigo-100 transition-colors"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="font-semibold text-gray-900">
-                          {phone.display_phone_number}
-                        </div>
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold ${getStatusColor(phone.status)}`}
-                        >
-                          {phone.status || "UNK"}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                        <div>
-                          <span className="block text-[10px] uppercase tracking-wider text-gray-400">
-                            Quality
-                          </span>
-                          <span
-                            className={`inline-block mt-0.5 px-1.5 py-0.5 rounded font-medium ${getQualityColor(phone.quality_rating)}`}
-                          >
-                            {phone.quality_rating}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="block text-[10px] uppercase tracking-wider text-gray-400">
-                            Limit
-                          </span>
-                          <span className="font-medium text-gray-700 mt-0.5 block">
-                            {phone.messaging_limit_tier?.replace("_", " ") ||
-                              "N/A"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {phone.updated_at && (
-                        <div className="mt-2 pt-2 border-t border-gray-200 text-[10px] text-gray-400 text-right">
-                          Upd: {new Date(phone.updated_at).toLocaleDateString()}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="text-center text-gray-500 py-8">
-                  No phone numbers found
-                </div>
+        {/* Left Column: Analytics */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Chart Card */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-[400px]">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">Message Traffic</h2>
+              <select className="text-sm border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                <option>Last 7 Days</option>
+              </select>
+            </div>
+            <div className="h-[300px] w-full">
+              {timeline && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={timeline} barGap={4}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis
+                      dataKey="date"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#9ca3af', fontSize: 12 }}
+                      dy={10}
+                      tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { weekday: 'short' })}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: '#9ca3af', fontSize: 12 }}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      cursor={{ fill: '#f9fafb' }}
+                    />
+                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                    <Bar dataKey="sent" name="Sent" fill="#4f46e5" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                    <Bar dataKey="received" name="Received" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  </BarChart>
+                </ResponsiveContainer>
               )}
             </div>
           </div>
+        </div>
 
-          {/* System Health Section */}
+        {/* Right Column: Infrastructure */}
+        <div className="space-y-6">
+
+          {/* WhatsApp Connection Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-green-600" />
+                WhatsApp Connection
+              </h2>
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className={`p-1.5 rounded-md transition-all ${syncing ? 'bg-gray-200 cursor-not-allowed' : 'hover:bg-white hover:shadow-sm text-gray-500 hover:text-indigo-600'}`}
+                title="Sync Account Info"
+              >
+                <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-6">
+              {/* Account Status */}
+              {mainAccount ? (
+                <div className="mb-4 pb-4 border-b border-gray-100">
+                  <div className="text-sm text-gray-500 mb-1">Business Account</div>
+                  <div className="font-medium text-gray-900 truncate mb-2">{mainAccount.name}</div>
+                  <div className="flex gap-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded border font-medium ${getStatusColor(mainAccount.account_review_status)}`}>
+                      {mainAccount.account_review_status || 'REVIEW: N/A'}
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded border font-medium ${getStatusColor(mainAccount.business_verification_status)}`}>
+                      {mainAccount.business_verification_status || 'VERIFY: N/A'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400 italic mb-4">No account connected</div>
+              )}
+
+              {/* Phone Lists */}
+              <div>
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Phone Numbers</div>
+                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                  {wabaStatus?.phone_numbers && wabaStatus.phone_numbers.length > 0 ? (
+                    wabaStatus.phone_numbers.map((phone) => (
+                      <div key={phone.id} className="group p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-indigo-100 transition-all">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="font-medium text-gray-900 text-sm font-mono">{phone.display_phone_number}</div>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold ${getStatusColor(phone.status)}`}>
+                            {phone.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className={`px-1.5 py-0.5 rounded border ${getQualityColor(phone.quality_rating)}`}>
+                            Quality: {phone.quality_rating}
+                          </span>
+                          <span className="text-gray-400" title="Messaging Limit">
+                            {phone.messaging_limit_tier?.split('_')[0] || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center text-gray-400 text-sm py-2">No numbers</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* System Health */}
           <SystemHealthWidget />
+
         </div>
       </div>
     </div>

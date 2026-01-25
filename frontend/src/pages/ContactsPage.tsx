@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Archive } from "lucide-react";
+import { Archive, Users, Search } from "lucide-react";
 import { apiClient } from "../api";
 import {
   Contact,
@@ -783,61 +783,58 @@ const ContactsPage: React.FC = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col">
-      <div className="mb-4">
-        <div className="flex gap-2 items-center">
-          {/* Фільтр тегів */}
+    <div className="h-[calc(100vh-4rem)] flex flex-col gap-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-shrink-0">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Contacts</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Manage your customer base and communications
+          </p>
+        </div>
+
+        <div className="flex gap-3 items-center">
+          {/* Tag Filter */}
           <TagFilter
             availableTags={availableTags}
             selectedTagIds={selectedFilterTags}
             onChange={setSelectedFilterTags}
           />
-
-          {/* Archive Toggle Button */}
-          <button
-            onClick={() => setShowArchived(!showArchived)}
-            className={`p-2 rounded-lg border transition-colors ${showArchived
-              ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
-              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-              }`}
-            title={
-              showArchived
-                ? "Показати активні контакти"
-                : "Показати архівовані контакти"
-            }
-          >
-            <Archive size={20} />
-          </button>
-
-          <input
-            type="text"
-            placeholder="Пошук контактів..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          />
-          <button
-            onClick={handleSearch}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-          >
-            Пошук
-          </button>
         </div>
       </div>
 
-      <div className="flex-1 flex gap-4 overflow-hidden">
+      <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
         {/* Contact List Column */}
         <div className="w-1/3 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-gray-800">
-              {showArchived ? "Архівовані контакти" : "Контакти"}
-            </h2>
-            {contacts.length > 0 && !loading && (
-              <span className="text-xs text-gray-400">
-                Всього: {contacts.length}
-              </span>
-            )}
+          <div className="p-4 border-b border-gray-200 flex gap-2 items-center bg-gray-50/50">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search contacts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
+              />
+            </div>
+
+            {/* Archive Toggle Button */}
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={`p-2 rounded-lg border transition-colors ${showArchived
+                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                : "bg-white text-gray-400 border-gray-200 hover:text-gray-600 hover:bg-gray-50"
+                }`}
+              title={
+                showArchived
+                  ? "Показати активні контакти"
+                  : "Показати архівовані контакти"
+              }
+            >
+              <Archive size={18} />
+            </button>
           </div>
           {loading ? (
             <div className="flex-1 flex items-center justify-center">

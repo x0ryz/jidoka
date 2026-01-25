@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Plus } from "lucide-react";
 import { apiClient } from "../api";
 import {
   CampaignResponse,
@@ -103,14 +104,14 @@ const CampaignsPage: React.FC = () => {
       setCampaigns((prev) => {
         const updated = prev.map((campaign) =>
           campaign.id === data.campaign_id
-            ? { 
-                ...campaign, 
-                status: data.status,
-                // Update counts if provided in the event
-                sent_count: data.sent !== undefined ? data.sent : campaign.sent_count,
-                delivered_count: data.delivered !== undefined ? data.delivered : campaign.delivered_count,
-                failed_count: data.failed !== undefined ? data.failed : campaign.failed_count,
-              }
+            ? {
+              ...campaign,
+              status: data.status,
+              // Update counts if provided in the event
+              sent_count: data.sent !== undefined ? data.sent : campaign.sent_count,
+              delivered_count: data.delivered !== undefined ? data.delivered : campaign.delivered_count,
+              failed_count: data.failed !== undefined ? data.failed : campaign.failed_count,
+            }
             : campaign,
         );
 
@@ -118,13 +119,13 @@ const CampaignsPage: React.FC = () => {
           ? updated.filter((campaign) => campaign.status === statusFilter)
           : updated;
 
-         // Update selected campaign from the updated list
-         if (selectedCampaign?.id === data.campaign_id) {
-           const updatedCampaign = updated.find(c => c.id === data.campaign_id);
-           if (updatedCampaign) {
-             setSelectedCampaign(updatedCampaign);
-           }
-         }
+        // Update selected campaign from the updated list
+        if (selectedCampaign?.id === data.campaign_id) {
+          const updatedCampaign = updated.find(c => c.id === data.campaign_id);
+          if (updatedCampaign) {
+            setSelectedCampaign(updatedCampaign);
+          }
+        }
 
         return sortCampaigns(filtered);
       });
@@ -180,10 +181,10 @@ const CampaignsPage: React.FC = () => {
               contact.contact_id === data.contact_id
                 ? {
                   ...contact,
-                  status: data.status === "sent" || data.status === "delivered" 
-                    ? ContactStatus.SENT 
-                    : data.status === "failed" 
-                      ? ContactStatus.FAILED 
+                  status: data.status === "sent" || data.status === "delivered"
+                    ? ContactStatus.SENT
+                    : data.status === "failed"
+                      ? ContactStatus.FAILED
                       : contact.status,
                   retry_count: data.retry_count !== undefined ? data.retry_count : contact.retry_count,
                 }
@@ -352,7 +353,7 @@ const CampaignsPage: React.FC = () => {
       await apiClient.addContactsManually(campaignId, contacts, forceAdd);
       // Оновлюємо кампанію щоб отримати новий total_contacts
       const updatedCampaign = await apiClient.getCampaign(campaignId);
-      setCampaigns(prev => prev.map(c => 
+      setCampaigns(prev => prev.map(c =>
         c.id === campaignId ? updatedCampaign : c
       ));
       if (selectedCampaign?.id === campaignId) {
@@ -371,7 +372,7 @@ const CampaignsPage: React.FC = () => {
       await apiClient.importContactsFromFile(campaignId, file);
       // Оновлюємо кампанію щоб отримати новий total_contacts
       const updatedCampaign = await apiClient.getCampaign(campaignId);
-      setCampaigns(prev => prev.map(c => 
+      setCampaigns(prev => prev.map(c =>
         c.id === campaignId ? updatedCampaign : c
       ));
       if (selectedCampaign?.id === campaignId) {
@@ -417,81 +418,92 @@ const CampaignsPage: React.FC = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex gap-4">
-      {/* Campaigns List */}
-      <div className="w-1/3 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-800">Розсилки</h2>
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="px-3 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-            >
-              + Створити
-            </button>
-          </div>
-          <div className="flex gap-2 overflow-x-auto">
-            {CAMPAIGN_TABS.map((tab) => {
-              const isActive = tab.key === activeTab;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => handleTabChange(tab.key)}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors whitespace-nowrap ${isActive ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+    <div className="h-[calc(100vh-4rem)] flex flex-col gap-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-shrink-0">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Manage and track your messaging campaigns
+          </p>
         </div>
-
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-gray-500">Завантаження...</div>
-          </div>
-        ) : campaigns.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-gray-500 p-4">
-            Кампанії не знайдено
-          </div>
-        ) : (
-          <CampaignList
-            campaigns={campaigns}
-            selectedCampaign={selectedCampaign}
-            onSelectCampaign={setSelectedCampaign}
-            onDeleteCampaign={handleDeleteCampaign}
-          />
-        )}
+        <button
+          onClick={() => setShowCreateForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          Create Campaign
+        </button>
       </div>
 
-      {/* Campaign Details */}
-      <div className="flex-1 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
-        {selectedCampaign ? (
-          <CampaignDetails
-            campaign={selectedCampaign}
-            stats={campaignStats}
-            contacts={campaignContacts}
-            onUpdate={handleUpdateCampaign}
-            onSchedule={handleScheduleCampaign}
-            onStart={handleStartCampaign}
-            onPause={handlePauseCampaign}
-            onResume={handleResumeCampaign}
-            onAddContacts={handleAddContacts}
-            onImportContacts={handleImportContacts}
-            onUpdateContact={handleUpdateCampaignContact}
-            onDeleteContact={handleDeleteCampaignContact}
-            showScheduleForm={showScheduleForm}
-            onShowScheduleForm={setShowScheduleForm}
-            currentPage={contactsPage}
-            totalPages={Math.ceil((selectedCampaign?.total_contacts || 0) / CONTACTS_PER_PAGE)}
-            onPageChange={handlePageChange}
-            loadingContacts={loadingContacts}
-          />
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            Оберіть кампанію для перегляду деталей
+      <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
+        {/* Campaigns List */}
+        <div className="w-1/3 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex gap-2 overflow-x-auto">
+              {CAMPAIGN_TABS.map((tab) => {
+                const isActive = tab.key === activeTab;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => handleTabChange(tab.key)}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors whitespace-nowrap ${isActive ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        )}
+
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-gray-500">Завантаження...</div>
+            </div>
+          ) : campaigns.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-gray-500 p-4">
+              Кампанії не знайдено
+            </div>
+          ) : (
+            <CampaignList
+              campaigns={campaigns}
+              selectedCampaign={selectedCampaign}
+              onSelectCampaign={setSelectedCampaign}
+              onDeleteCampaign={handleDeleteCampaign}
+            />
+          )}
+        </div>
+
+        {/* Campaign Details */}
+        <div className="flex-1 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
+          {selectedCampaign ? (
+            <CampaignDetails
+              campaign={selectedCampaign}
+              stats={campaignStats}
+              contacts={campaignContacts}
+              onUpdate={handleUpdateCampaign}
+              onSchedule={handleScheduleCampaign}
+              onStart={handleStartCampaign}
+              onPause={handlePauseCampaign}
+              onResume={handleResumeCampaign}
+              onAddContacts={handleAddContacts}
+              onImportContacts={handleImportContacts}
+              onUpdateContact={handleUpdateCampaignContact}
+              onDeleteContact={handleDeleteCampaignContact}
+              showScheduleForm={showScheduleForm}
+              onShowScheduleForm={setShowScheduleForm}
+              currentPage={contactsPage}
+              totalPages={Math.ceil((selectedCampaign?.total_contacts || 0) / CONTACTS_PER_PAGE)}
+              onPageChange={handlePageChange}
+              loadingContacts={loadingContacts}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-gray-500">
+              Оберіть кампанію для перегляду деталей
+            </div>
+          )}
+        </div>
+
       </div>
 
       {/* Create Campaign Modal */}
