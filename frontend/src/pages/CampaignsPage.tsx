@@ -117,6 +117,22 @@ const CampaignsPage: React.FC = () => {
 
       // If selected campaign is updated, reload details
       if (selectedCampaign && selectedCampaign.id === data.campaign_id) {
+        // Update stats if provided in the event (e.g. on completion)
+        if (data.sent !== undefined || data.total !== undefined) {
+          setCampaignStats((prev) =>
+            prev
+              ? {
+                ...prev,
+                sent_count: data.sent ?? prev.sent_count,
+                delivered_count: data.delivered ?? prev.delivered_count,
+                failed_count: data.failed ?? prev.failed_count,
+                total_contacts: data.total ?? prev.total_contacts,
+                progress_percent: data.progress_percent ?? 100, // Assume 100 if completed? No, check data.
+              }
+              : null,
+          );
+        }
+
         loadCampaignDetails(selectedCampaign.id);
       }
     },

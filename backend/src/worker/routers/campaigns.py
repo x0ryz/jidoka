@@ -41,6 +41,7 @@ async def consume_campaign_messages(
 
     batch_size = 10
     empty_fetches = 0
+    processed_count_for_stats = 0
     try:
         while True:
             try:
@@ -118,8 +119,39 @@ async def consume_campaign_messages(
                             link_id=UUID(link_id),
                             contact_id=UUID(contact_id),
                         )
-                        # Always ack to avoid broker-level retries; DB handles future retries
                         await msg.ack()
+
+                        processed_count_for_stats += 1
+                        if processed_count_for_stats >= 5:
+                            processed_count_for_stats = 0
+                            try:
+                                async with async_session_maker() as stats_session:
+                                    stats_repo = CampaignRepository(stats_session)
+                                    stats = await stats_repo.get_stats_by_id(UUID(cid))
+                                    if stats:
+                                        total = stats.get("total_contacts", 0)
+                                        sent = stats.get("sent_count", 0)
+                                        delivered = stats.get("delivered_count", 0)
+                                        failed = stats.get("failed_count", 0)
+                                        read = stats.get("read_count", 0)
+                                        
+                                        percent = 0
+                                        if total > 0:
+                                            processed_items = sent + failed
+                                            percent = int((processed_items / total) * 100)
+                                        
+                                        await service.lifecycle.notifier.notify_campaign_progress(
+                                            campaign_id=UUID(cid),
+                                            total=total,
+                                            sent=sent,
+                                            delivered=delivered,
+                                            read=read,
+                                            failed=failed,
+                                            progress_percent=percent
+                                        )
+                            except Exception as e:
+                                logger.error(f"Failed to send progress update: {e}")
+
                         if not success:
                             logger.debug(
                                 f"Send failed/skipped for contact {contact_id}"
