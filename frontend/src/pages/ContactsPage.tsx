@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Archive, Users, Search } from "lucide-react";
 import { apiClient } from "../api";
 import {
@@ -19,7 +19,8 @@ import { useWSEvent } from "../services/useWebSocket";
 import { EventType } from "../services/websocket";
 
 const ContactsPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
   // --- State ---
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -58,18 +59,17 @@ const ContactsPage: React.FC = () => {
 
   // Синхронізація URL -> вибраний контакт
   useEffect(() => {
-    const contactIdFromUrl = searchParams.get("contact_id");
-    if (contactIdFromUrl && contacts.length > 0 && !selectedContact) {
-      const contact = contacts.find((c) => c.id === contactIdFromUrl);
+    if (id && contacts.length > 0 && !selectedContact) {
+      const contact = contacts.find((c) => c.id === id);
       if (contact) {
         setSelectedContact(contact);
       }
     }
-  }, [contacts, searchParams, selectedContact]);
+  }, [contacts, id, selectedContact]);
 
   // Обробник вибору контакту з оновленням URL
   const handleSelectContact = async (contact: Contact) => {
-    setSearchParams({ contact_id: contact.id });
+    navigate(`/contacts/${contact.id}`);
     
     // Load full contact details to get phone_number and other fields
     try {
@@ -783,11 +783,7 @@ const ContactsPage: React.FC = () => {
     setContacts((prev) => prev.filter((c) => c.id !== contactId));
     if (selectedContact?.id === contactId) {
       setSelectedContact(null);
-      setSearchParams((params) => {
-        const newParams = new URLSearchParams(params);
-        newParams.delete("contact_id");
-        return newParams;
-      });
+      navigate("/contacts");
     }
   };
 

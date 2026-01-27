@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CampaignResponse,
   CampaignCreate,
@@ -219,6 +220,7 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
   onPageChange,
   loadingContacts = false,
 }) => {
+  const navigate = useNavigate();
   const [showEditForm, setShowEditForm] = useState(false);
   const [showAddContacts, setShowAddContacts] = useState(false);
   const [editingContact, setEditingContact] = useState<CampaignContactResponse | null>(null);
@@ -440,11 +442,9 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
                         Спроби
                       </th>
-                      {canEdit && (
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
-                          Дії
-                        </th>
-                      )}
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                        Дії
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -486,9 +486,20 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                             <td className="px-4 py-3 text-sm text-gray-600">
                               {contact.retry_count}
                             </td>
-                            {canEdit && (
-                              <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex gap-2">
+                            <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex gap-2">
+                                <button
+                                onClick={() => navigate(`/contacts/${contact.contact_id}`)}
+                                className="text-green-600 hover:text-green-800 text-xs font-medium"
+                                title="Перейти до чату"
+                              >
+                                Чат
+                              </button>
+
+                              {/* Кнопки редагування (Тільки якщо canEdit) */}
+                              {canEdit && (
+                                <>
+                                  <div className="h-4 w-px bg-gray-300 mx-1"></div> {/* Розділювач */}
                                   <button
                                     onClick={() => setEditingContact(contact)}
                                     className="text-blue-600 hover:text-blue-800 text-xs"
@@ -501,9 +512,10 @@ const CampaignDetails: React.FC<CampaignDetailsProps> = ({
                                   >
                                     Видалити
                                   </button>
-                                </div>
-                              </td>
-                            )}
+                                </>
+                              )}
+                              </div>
+                            </td>
                           </tr>
                           {isExpanded && hasExpandableContent && (
                             <tr className="bg-gray-50">

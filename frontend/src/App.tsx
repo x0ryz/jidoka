@@ -22,6 +22,7 @@ function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/contacts/:id" element={<ContactsPage />} />
           <Route path="/templates" element={<TemplatesPage />} />
           <Route path="/templates/:id" element={<TemplateDetailPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
