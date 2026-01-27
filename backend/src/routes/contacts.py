@@ -30,25 +30,14 @@ async def get_contacts(
     offset: int = Query(0, ge=0),
     tags: list[UUID] | None = Query(default=None),
     status: ContactStatus | None = Query(default=None),
-    all: bool = Query(
-        default=False,
-        description="Показати всі контакти (включно з тими, у кого немає тегів)",
-    ),
     session: AsyncSession = Depends(get_session),
 ):
-    """Get all contacts sorted by unread count and last activity
-
-    За замовчуванням показує всіх контактів з будь-якими тегами.
-    Для перегляду абсолютно всіх контактів (включно з тими, у кого немає тегів) встановіть all=true
-    """
-    show_only_with_tags = not all
-
+    """Get all contacts sorted by unread count and last activity"""
     contacts = await ContactRepository(session).get_paginated(
         limit,
         offset,
         tag_ids=tags,
         status=status,
-        show_only_with_tags=show_only_with_tags,
     )
     return contacts
 

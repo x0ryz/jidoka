@@ -45,7 +45,6 @@ class ContactRepository(BaseRepository[Contact]):
         offset: int,
         tag_ids: list[UUID] | None = None,
         status: ContactStatus | None = None,
-        show_only_with_tags: bool = False,
     ) -> list[Contact]:
         stmt = select(Contact).options(
             selectinload(Contact.last_message), selectinload(Contact.tags)
@@ -61,9 +60,6 @@ class ContactRepository(BaseRepository[Contact]):
 
         if tag_ids:
             stmt = stmt.where(Contact.tags.any(Tag.id.in_(tag_ids)))
-        elif show_only_with_tags:
-            # Показуємо тільки контакти, які мають хоча б один тег
-            stmt = stmt.where(Contact.tags.any())
 
         stmt = stmt.order_by(
             desc(Contact.unread_count),
@@ -118,15 +114,6 @@ class ContactRepository(BaseRepository[Contact]):
                 tags_result = await self.session.execute(tags_query)
                 contact.tags = list(tags_result.scalars().all())
 
-            # Перевіряємо чи є тег "Замовлення виконано" - якщо є, архівуємо контакт
-            has_completed_tag = any(
-                tag.name == "Замовлення виконано" for tag in contact.tags)
-            if has_completed_tag:
-                contact.status = ContactStatus.ARCHIVED
-            else:
-                # Перевіряємо чи потрібно архівувати якщо немає тегів
-                await self.check_and_archive_if_no_tags(contact)
-
         for key, value in update_data.items():
             setattr(contact, key, value)
 
@@ -162,48 +149,6 @@ class ContactRepository(BaseRepository[Contact]):
         contact.last_incoming_message_at = get_utc_now()
         self.add(contact)
         return contact
-
-    async def set_auto_tag(self, contact: Contact, tag_name: str, notify: bool = True) -> None:
-        """Automatically set a tag to the contact, replacing old auto-tags."""
-        tag_repo = TagRepository(self.session)
-
-        # Визначаємо системні теги які автоматично замінюються
-        auto_system_tags = ["Потребує відповіді", "Очікуємо на відповідь"]
-
-        # Теги які НЕ можна видаляти автоматично (тільки адмін вручну)
-        manual_tags = ["Новий користувач", "Нове замовлення",
-                       "Оплачено", "Замовлення виконано"]
-
-        # Отримуємо новий тег
-        new_tag = await tag_repo.get_or_create_tag(tag_name)
-
-        # Видаляємо тільки автоматичні системні теги (НЕ чіпаємо manual_tags)
-        contact.tags = [
-            tag for tag in contact.tags if tag.name not in auto_system_tags]
-
-        # Додаємо новий системний тег
-        if new_tag not in contact.tags:
-            contact.tags.append(new_tag)
-
-        # Якщо у контакта є теги, він має бути активним
-        if contact.tags:
-            contact.status = ContactStatus.ACTIVE
-
-        self.add(contact)
-
-        # Нотифікуємо про зміну тегів (якщо треба)
-        if notify:
-            from src.services.notifications.service import NotificationService
-            notifier = NotificationService()
-            tags_data = [
-                {"id": str(tag.id), "name": tag.name, "color": tag.color} for tag in contact.tags]
-            await notifier.notify_contact_tags_changed(contact.id, contact.phone_number, tags_data)
-
-    async def check_and_archive_if_no_tags(self, contact: Contact) -> None:
-        """Архівує контакт, якщо у нього немає тегів."""
-        if not contact.tags:
-            contact.status = ContactStatus.ARCHIVED
-            self.add(contact)
 
     async def has_received_template_message(self, contact_id: UUID) -> bool:
         """Перевіряє чи отримував контакт шаблонні повідомлення."""

@@ -50,7 +50,8 @@ class CampaignMessageExecutor:
         if not self._can_send_message(campaign, contact_link):
             return False
 
-        template_name, body_text, lang_code = self._prepare_message_data(campaign)
+        template_name, body_text, lang_code = self._prepare_message_data(
+            campaign)
         template_params = self._prepare_template_params(campaign, contact)
 
         # Determine message type: "template" if template_id exists, else "text"
@@ -177,6 +178,7 @@ class CampaignMessageExecutor:
         # WebSocket notify
         await self.notifier.notify_message_status(
             message_id=message.id,
+            wamid=message.wamid or "",
             status="failed",
             campaign_id=str(campaign.id),
             contact_id=str(contact_link.contact_id),
@@ -202,6 +204,7 @@ class CampaignMessageExecutor:
         # WebSocket notify
         await self.notifier.notify_message_status(
             message_id=message.id,
+            wamid=message.wamid or "",
             status="sent",
             campaign_id=str(campaign.id),
             contact_id=str(contact.id),

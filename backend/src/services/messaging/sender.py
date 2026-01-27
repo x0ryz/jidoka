@@ -257,9 +257,6 @@ class MessageSenderService:
             contact.last_message_at = message.created_at
             contact.last_message_id = message.id
 
-            # Змінюємо тег на "Очікуємо на відповідь" після відповіді
-            await self.contacts.set_auto_tag(contact, "Очікуємо на відповідь")
-
             self.session.add(contact)
 
             # Step 10: Send via Meta API
@@ -479,9 +476,6 @@ class MessageSenderService:
         contact.last_message_at = message.created_at
         contact.last_message_id = message.id
 
-        # Змінюємо тег на "Очікуємо на відповідь" після відповіді
-        await self.contacts.set_auto_tag(contact, "Очікуємо на відповідь")
-
         self.session.add(contact)
 
         if not is_campaign:
@@ -591,13 +585,14 @@ class MessageSenderService:
             message.error_message = error_message[:500] if error_message else None
 
             self.session.add(message)
-            
+
             # For campaign messages, return the failed message instead of raising
             # This allows the campaign executor to handle the failure gracefully
             if is_campaign:
-                logger.info(f"Returning failed campaign message for {contact.phone_number}")
+                logger.info(
+                    f"Returning failed campaign message for {contact.phone_number}")
                 return message
-            
+
             # For non-campaign messages, raise to maintain backward compatibility
             raise
 

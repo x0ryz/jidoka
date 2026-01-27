@@ -8,24 +8,9 @@ export const NotificationManager = () => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  // 1. Повідомлення
+  // 1. Повідомлення (websocket connection kept, notifications removed)
   useWSEvent(EventType.NEW_MESSAGE, (data) => {
-    const activeContactId =
-      searchParams.get("id") || searchParams.get("contact_id");
-    if (
-      location.pathname.includes("/contacts") &&
-      activeContactId === data.contact_id
-    )
-      return;
-
-    toast.success(
-      <div>
-        <p className="font-bold text-sm">Нове повідомлення</p>
-        <p className="text-xs text-gray-600">{data.phone}</p>
-        <p className="text-sm mt-1 truncate">{data.body}</p>
-      </div>,
-      { duration: 4000 },
-    );
+    // Real-time messaging preserved, toast notifications removed
   });
 
   // 2. Шаблони (дані прийшли з вебхука: name, status)
