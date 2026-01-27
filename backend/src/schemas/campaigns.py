@@ -91,24 +91,31 @@ class CampaignListResponse(UUIDMixin, TimestampMixin):
 class CampaignContactResponse(BaseModel):
     id: UUID
     contact_id: UUID
-    phone_number: str = Field(validation_alias=AliasPath("contact", "phone_number"))
+    phone_number: str = Field(
+        validation_alias=AliasPath("contact", "phone_number"))
     name: str | None = Field(
         default=None, validation_alias=AliasPath("contact", "name")
     )
     custom_data: dict[str, Any] = Field(
-        default_factory=dict, validation_alias=AliasPath("contact", "custom_data")
+        default_factory=dict, validation_alias=AliasPath(
+            "contact", "custom_data")
     )
     retry_count: int
+    is_replied: bool | None = Field(default=None, exclude=True)
 
     message: Any | None = Field(default=None, exclude=True)
 
     @computed_field
     def status(self) -> str:
+        if hasattr(self, "is_replied") and self.is_replied:
+            return "replied"
+
         msg = getattr(self, "message", None)
         if msg and msg.status:
             if hasattr(msg.status, "value"):
                 return str(msg.status.value)
             return str(msg.status)
+        
         return "queued"
 
     @computed_field

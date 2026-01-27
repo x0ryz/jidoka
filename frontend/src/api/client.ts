@@ -139,10 +139,16 @@ export class ApiClient {
     return response.data;
   }
 
+  async getContact(contactId: string): Promise<Contact> {
+    const response = await this.client.get<Contact>(
+      `/contacts/${contactId}`,
+    );
+    return response.data;
+  }
+
   async deleteContact(contactId: string): Promise<void> {
     await this.client.delete(`/contacts/${contactId}`);
   }
-
 
   async markContactAsRead(contactId: string): Promise<void> {
     await this.client.post(`/contacts/${contactId}/read`);

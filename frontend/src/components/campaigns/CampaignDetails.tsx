@@ -86,56 +86,37 @@ const CampaignStatsBar: React.FC<{ stats: CampaignStats }> = ({ stats }) => {
 
   if (total_contacts === 0) return null;
 
-  // subtract replied from read/delivered/sent in the visual bar? 
-  // The user asked "track replied, and then subtract replied from viewed count".
-  // Let's implement that subtraction logic for the VISUAL segments, 
-  // but keep the raw data in the tooltip/legend.
-
-  // If we just stack them:
-  // Replied is subset of Read. Read is subset of Delivered. Delivered is subset of Sent.
-  // We want to show distinct segments.
-  // Replied (orange)
-  // Read (purple) - minus Replied
-  // Delivered (green) - minus Read (which includes Replied)
-  // Sent (blue) - minus Delivered (which includes Read)
-
-  // However, the backend counts provided in `stats` are usually cumulative (Total Sent, Total Delivered, Total Read).
-  // Assuming the backend returns cumulative counts:
+  // Backend provides cumulative counts, use them as-is
   const sent = sent_count;
   const delivered = delivered_count;
   const read = read_count;
   const replied = replied_count;
   const failed = failed_count;
 
-  // Visual segments (exclusive)
-  const visualReplied = replied;
-  const visualRead = Math.max(0, read - replied);
-  const visualDelivered = Math.max(0, delivered - read);
-  const visualSent = Math.max(0, sent - delivered - failed);
-  // * Note: Failed is usually separate from Delivered. 
-
+  // Visual segments with subtraction: show exclusive portions
+  // e.g., if read=75 and replied=39, show "read" as 75-39=36
   const segments = [
     {
       key: "replied",
-      value: visualReplied,
-      totalValue: replied, // for display text
+      value: replied,
+      totalValue: replied,
       ...STATUS_STYLES.replied,
     },
     {
       key: "read",
-      value: visualRead,
-      totalValue: read,
+      value: Math.max(0, read - replied), 
+      totalValue: read - replied, 
       ...STATUS_STYLES.read,
     },
     {
       key: "delivered",
-      value: visualDelivered,
+      value: delivered,
       totalValue: delivered,
       ...STATUS_STYLES.delivered,
     },
     {
       key: "sent",
-      value: visualSent,
+      value: sent,
       totalValue: sent,
       ...STATUS_STYLES.sent,
     },

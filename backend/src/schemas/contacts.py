@@ -74,7 +74,6 @@ class ContactResponse(UUIDMixin, TimestampMixin):
     status: ContactStatus
     last_message_at: datetime | None = None
     last_incoming_message_at: datetime | None = None
-    source: str | None = None
     tags: list[TagResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(
@@ -82,13 +81,11 @@ class ContactResponse(UUIDMixin, TimestampMixin):
         json_schema_extra={
             "example": {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
-                "phone_number": "380671234567",
                 "name": "John Doe",
                 "unread_count": 3,
-                "status": "new",
+                "status": "read",
                 "last_message_at": "2024-01-15T10:30:00Z",
                 "last_incoming_message_at": "2024-01-15T10:30:00Z",
-                "source": "import_csv",
                 "tags": [{"id": "...", "name": "vip", "color": "#FF0000"}],
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": "2024-01-15T10:30:00Z",
@@ -99,9 +96,7 @@ class ContactResponse(UUIDMixin, TimestampMixin):
 
 class ContactListResponse(BaseModel):
     id: UUID
-    phone_number: str
     name: str | None = None
-    custom_data: dict[str, Any] = Field(default_factory=dict)
     unread_count: int
     last_message_at: datetime | None = None
     last_incoming_message_at: datetime | None = None

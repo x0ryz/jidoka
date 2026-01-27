@@ -68,9 +68,18 @@ const ContactsPage: React.FC = () => {
   }, [contacts, searchParams, selectedContact]);
 
   // Обробник вибору контакту з оновленням URL
-  const handleSelectContact = (contact: Contact) => {
-    setSelectedContact(contact);
+  const handleSelectContact = async (contact: Contact) => {
     setSearchParams({ contact_id: contact.id });
+    
+    // Load full contact details to get phone_number and other fields
+    try {
+      const fullContact = await apiClient.getContact(contact.id);
+      setSelectedContact(fullContact);
+    } catch (error) {
+      console.error("Error loading contact details:", error);
+      // Fallback to list data if full load fails
+      setSelectedContact(contact);
+    }
   };
 
   // Завантаження чату при виборі контакту
@@ -805,7 +814,7 @@ const ContactsPage: React.FC = () => {
 
       <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
         {/* Contact List Column */}
-        <div className="w-1/3 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
+        <div className="w-1/4 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
           <div className="p-4 border-b border-gray-200 flex gap-2 items-center bg-gray-50/50">
             {/* Search */}
             {/* Search */}

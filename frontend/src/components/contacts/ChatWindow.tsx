@@ -264,7 +264,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (contact.custom_data?.language) {
       return contact.custom_data.language as string;
     }
-    return detectLanguageFromPhone(contact.phone_number);
+    if (contact.phone_number) {
+      return detectLanguageFromPhone(contact.phone_number);
+    }
+    return "uk"; // Default to Ukrainian
   });
 
   // Editing Name State
@@ -305,8 +308,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       // Оновлюємо мову при зміні контакта
       if (contact.custom_data?.language) {
         setSelectedLanguage(contact.custom_data.language as string);
-      } else {
+      } else if (contact.phone_number) {
         setSelectedLanguage(detectLanguageFromPhone(contact.phone_number));
+      } else {
+        setSelectedLanguage("uk"); // Default to Ukrainian
       }
     }
   }, [contact.id, contact.phone_number, contact.custom_data]);

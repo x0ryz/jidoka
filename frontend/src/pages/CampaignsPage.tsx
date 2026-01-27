@@ -437,7 +437,7 @@ const CampaignsPage: React.FC = () => {
 
       <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
         {/* Campaigns List */}
-        <div className="w-1/3 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
+        <div className="w-1/4 border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <div className="flex gap-2 overflow-x-auto">
               {CAMPAIGN_TABS.map((tab) => {
