@@ -33,8 +33,8 @@ async def scheduled_campaigns_checker(broker):
                     )
 
                 # Check for running/paused campaigns that might need completion
-                running_campaigns = await campaigns_repo.list_with_status(CampaignStatus.RUNNING)
-                paused_campaigns = await campaigns_repo.list_with_status(CampaignStatus.PAUSED)
+                running_campaigns = await campaigns_repo.list_basic(CampaignStatus.RUNNING)
+                paused_campaigns = await campaigns_repo.list_basic(CampaignStatus.PAUSED)
 
                 all_active = running_campaigns + paused_campaigns
                 if all_active:

@@ -72,7 +72,7 @@ class CampaignMessageExecutor:
             )
 
             # Перевірка на невдачу (sender може повернути failed message замість raise)
-            from src.models import MessageStatus
+            from src.models import MessageDirection, MessageStatus
 
             if message.status == MessageStatus.FAILED:
                 await self._handle_failed_message(campaign, contact_link, message)
@@ -87,8 +87,45 @@ class CampaignMessageExecutor:
         except Exception as e:
             logger.error(f"Failed to send message to {contact_id}: {e}")
             await self.session.rollback()
-            # Обробка критичної помилки (створення failed message, якщо його нема)
-            # ... (тут твій код створення failed message) ...
+
+            # Critical error handling: create a failed message if one doesn't exist
+            # This ensures the error is recorded in the DB and stats
+            try:
+                # We need MessageStatus and MessageDirection locally if not imported or use strings if model allows,
+                # but better to import them properly. The import is above in the try block, but we are in except.
+                # Let's import them safely here or rely on top-level imports (which we will add).
+                from src.models import MessageDirection, MessageStatus
+
+                # Try to use campaign's phone ID, or just fail to link phone
+                waba_phone_id = campaign.waba_phone_id
+
+                # Need to run in a new transaction or after rollback
+                if waba_phone_id:
+                    error_msg_text = str(e)
+                    failed_msg = await self.sender.messages.create(
+                        waba_phone_id=waba_phone_id,
+                        contact_id=contact.id,
+                        direction=MessageDirection.OUTBOUND,
+                        status=MessageStatus.FAILED,
+                        message_type=message_type,
+                        body=body_text if body_text else template_name,
+                        error_message=error_msg_text[:500]
+                        if error_msg_text
+                        else "Unknown error",
+                    )
+                    # We must commit this new message
+                    await self.session.commit()
+
+                    # Now link it to the contact
+                    await self._handle_failed_message(
+                        campaign, contact_link, failed_msg
+                    )
+            except Exception as create_error:
+                logger.error(
+                    f"Failed to record critical failure for {contact_id}: {create_error}"
+                )
+                # If we fail to even record the error, we just return False
+
             return False
 
     # --- Helpers ---
@@ -189,7 +226,7 @@ class CampaignMessageExecutor:
         progress = 0.0
         if total > 0:
             progress = round((processed / total) * 100, 2)
-        
+
         try:
             await self.notifier.notify_campaign_progress(
                 campaign_id=str(campaign_id),
@@ -198,7 +235,7 @@ class CampaignMessageExecutor:
                 delivered=delivered,
                 failed=failed,
                 # Include total for frontend calculations
-                total_contacts=total 
+                total_contacts=total,
             )
         except Exception as e:
             logger.warning(f"Failed to notify progress for {campaign_id}: {e}")
